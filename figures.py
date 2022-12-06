@@ -389,29 +389,29 @@ def plot_panel_model():
         }
 
         # Minimal lower/upper limit: Per hand for each scenario
-        if i_scenario == 1:
-            # Upper
-            u_vec = {"crps": 1.15, "me": 0.01, "a": 0.01, "w": 1}
-            # Lower
-            l_vec = {"crps": 0.97, "a": -0.001}
-        elif i_scenario == 2:
-            # Upper
-            u_vec = {"crps": 2.32, "a": 0.07, "w": 1.1}
-            # Lower
-            l_vec = {"crps": 2.19, "a": -0.07, "w": -0.1}
-        elif i_scenario == 3:
-            # Upper
-            u_vec = {"crps": 0.7, "a": 0.01, "w": 2}
-            # Lower
-            l_vec = {"crps": 0.65, "a": -0.01}
-        elif i_scenario == 4:
-            # Upper
-            u_vec = {"crps": 0.64, "a": 0.01, "w": 0.5}
-            # Lower
-            l_vec = {"crps": 0.42, "a": -0.07}
-        else:
-            u_vec = {}
-            l_vec = {}
+        # if i_scenario == 1:
+        #     # Upper
+        #     u_vec = {"crps": 1.15, "me": 0.01, "a": 0.01, "w": 1}
+        #     # Lower
+        #     l_vec = {"crps": 0.97, "a": -0.001}
+        # elif i_scenario == 2:
+        #     # Upper
+        #     u_vec = {"crps": 2.32, "a": 0.07, "w": 1.1}
+        #     # Lower
+        #     l_vec = {"crps": 2.19, "a": -0.07, "w": -0.1}
+        # elif i_scenario == 3:
+        #     # Upper
+        #     u_vec = {"crps": 0.7, "a": 0.01, "w": 2}
+        #     # Lower
+        #     l_vec = {"crps": 0.65, "a": -0.01}
+        # elif i_scenario == 4:
+        #     # Upper
+        #     u_vec = {"crps": 0.64, "a": 0.01, "w": 0.5}
+        #     # Lower
+        #     l_vec = {"crps": 0.42, "a": -0.07}
+        # else:
+        #     u_vec = {}
+        #     l_vec = {}
 
         # Legend labels
         leg_labels = {"ens": "DE", "opt": r"$F^*$", **agg_abr}
@@ -446,7 +446,7 @@ def plot_panel_model():
                     x="n_ens",
                     y="score",
                     hue="agg",
-                    color=agg_col,
+                    palette=agg_col,
                 )
                 if metric not in ["crps", "lgt"]:
                     axes[j][i].axhline(y=hline_vec[metric], linestyle="dashed")
@@ -464,6 +464,7 @@ def plot_panel_model():
             loc="upper center",
             ncol=len(score_labels),
         )
+        fig.suptitle(f"Model {i_scenario}")
         for ax in axes.flatten():  # type: ignore
             ax.legend().set_visible(False)
 
@@ -505,7 +506,7 @@ def plot_panel_boxplot():
                         "n_ens": i_ens,
                         "nn": temp_nn,
                         "agg": temp_agg,
-                        "crpss": 100 * df_sub["crpss"],
+                        "crpss": [list(100 * df_sub["crpss"])],
                     }
 
                     df_plot = pd.concat(
@@ -515,10 +516,10 @@ def plot_panel_boxplot():
 
         ### Prepare data ###
         # Minimal lower/upper limit: Per hand for each scenario
-        if i_scenario == 1:
-            lu_vec = [-20, 40]
-        else:
-            lu_vec = max(df_plot["crps"]) - min(df_plot["crps"])
+        # if i_scenario == 1:
+        #     lu_vec = [-20, 40]
+        # else:
+        #     lu_vec = max(df_plot["crps"]) - min(df_plot["crps"])
 
         # Rename networks
         df_plot["nn"] = df_plot["nn"].str.upper()
@@ -528,13 +529,42 @@ def plot_panel_boxplot():
 
         ### PDF ###
         # Make plot
-        fig, axes = plt.subplots(3, 5, figsize=(10, 15))
+        fig, axes = plt.subplots(
+            len(nn_vec), len(agg_names.keys()), figsize=(15, 10)
+        )
+        sample_size = len(df_plot["crpss"].iloc[0])
+        fig.suptitle(f"Model {i_scenario} - Sample size: {sample_size}")
 
         # For-Loop over networks
         for i, temp_nn in enumerate([x.upper() for x in nn_vec]):
             # For-Loop over metrics
-            for j, metric in enumerate(agg_names.keys()):
-                pass
+            for j, agg_method in enumerate(agg_names.keys()):
+                sns.boxplot(
+                    data=df_plot[
+                        (df_plot["nn"] == temp_nn)
+                        & (df_plot["agg"] == agg_method)
+                    ].explode("crpss"),
+                    y="crpss",
+                    x="n_ens",
+                    color=agg_col[agg_method],
+                    ax=axes[i][j],
+                )
+
+                axes[i][j].axhline(y=0, color="grey", linestyle="dashed")
+                axes[i][j].set_xlabel("")
+                if i == 0:
+                    axes[i][j].set_title(agg_abr[agg_method])
+                if j == 0:
+                    axes[i][j].set_ylabel(f"{temp_nn}: CRPSS in %")
+                else:
+                    axes[i][j].set_ylabel("")
+
+        # Save fig
+        filename = os.path.join(
+            pdf_path, f"ss_gg_panel_crpss_boxplots_model_{i_scenario}.pdf"
+        )
+        fig.savefig(filename)
+        print(f"PIT saved to {filename}")
 
 
 def plot_pit_ens():
@@ -640,21 +670,23 @@ def plot_pit_ens():
 
         ### PDF ###
         # Limit of y-axis
-        if i_scenario == 1:
-            y_lim = 1.5
-        elif i_scenario == 2:
-            y_lim = 2.5
-        elif i_scenario == 3:
-            y_lim = 1.5
-        elif i_scenario == 4:
-            y_lim = 2
-        else:
-            y_lim = None
+        # if i_scenario == 1:
+        #     y_lim = 1.5
+        # elif i_scenario == 2:
+        #     y_lim = 2.5
+        # elif i_scenario == 3:
+        #     y_lim = 1.5
+        # elif i_scenario == 4:
+        #     y_lim = 2
+        # else:
+        #     y_lim = None
 
         # Make plot
         fig, axes = plt.subplots(
             len(nn_vec), len(["ens", *agg_meths]), figsize=(15, 5)
         )
+        fig.suptitle(f"Model {i_scenario}")
+
         leg_labels = {"ens": "DE", "opt": r"$F^*$", **agg_abr}
 
         # For-Loop over networks
@@ -671,6 +703,7 @@ def plot_pit_ens():
                     df_curr["pit"].iloc[0],
                     width=np.diff(df_curr["breaks"].iloc[0]),
                 )
+                axes[i][j].axhline(y=1, linestyle="dashed", color="r")
 
                 if i == 0:
                     axes[i, j].title.set_text(leg_labels[metric])
@@ -689,7 +722,5 @@ if __name__ == "__main__":
     # plot_example_aggregation()
 
     plot_panel_model()
-
     # plot_panel_boxplot()
-
-    plot_pit_ens()
+    # plot_pit_ens()

@@ -1,2 +1,11 @@
 
 .Rhistory
+__pycache__
+.vscode
+.ipynb_checkpoints
+.mypy_cache
+
+data/agg/*
+data/model/*
+data/ss_data/*
+plots/*
