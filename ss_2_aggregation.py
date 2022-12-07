@@ -5,13 +5,13 @@ import os
 import pickle
 from itertools import product
 from functools import partial
-from random import choices
 from time import time_ns
 
 import numpy as np
 import pandas as pd
 import scipy.stats as ss
-from joblib import Parallel, delayed
+
+# from joblib import Parallel, delayed
 from multiprocessing.pool import Pool
 from rpy2.robjects import default_converter, numpy2ri, vectors
 from rpy2.robjects.conversion import localconverter
@@ -23,7 +23,7 @@ from fn_eval import bern_quants, fn_scores_distr, fn_scores_ens
 
 
 ### Functions for weight estimation (and uPIT) ###
-def fn_vi_drn(a, w, f_sum, y, **kwargs):
+def fn_vi_drn(a: float, w: float, f_sum, y: np.ndarray, **kwargs) -> float:
     """CRPS of VI forecast in case of DRN
 
     Parameters
@@ -39,7 +39,7 @@ def fn_vi_drn(a, w, f_sum, y, **kwargs):
 
     Returns
     -------
-    _type_
+    float
         CRPS of VI forecast
     """
     ### Initiation ###
@@ -96,7 +96,7 @@ def fn_vi_bqn(a, w, f_sum, y, **kwargs):
     # Calculate weighted average
     alpha = w * f_sum
 
-    # Calculate quantiles
+    # Calculate quantiles (adds a to every entry)
     q = a + bern_quants(alpha=alpha, q_levels=kwargs["q_levels"])
 
     # Calculate CRPS
@@ -111,19 +111,11 @@ def fn_vi_bqn(a, w, f_sum, y, **kwargs):
 
 def fn_apply_bqn(i, n_ens, **kwargs):
     # Sample individual distribution
-    i_rep = choices(
-        population=range(n_ens), k=kwargs["n_lp_samples"]
+    i_rep = np.random.choice(
+        a=range(n_ens), size=kwargs["n_lp_samples"], replace=True
     )  # with replacement
 
     # Draw from individual distributions
-    # TODO: Check if works
-    # def func_temp(j):
-    #    alpha_temp = kwargs["f_ls"][f"alpha{j}"][i, :]
-
-    # return bern_quants(
-    #    q_levels=np.random.uniform(size=1), alpha=alpha_temp
-    # )
-
     alpha_vec = [
         bern_quants(
             alpha=kwargs["f_ls"][f"alpha{j}"][i, :],
@@ -132,25 +124,42 @@ def fn_apply_bqn(i, n_ens, **kwargs):
         for j in i_rep
     ]
 
-    # res = np.apply_along_axis(
-    #    func1d=bern_quants(
-    #        alpha=alpha_temp[j],
-    #        q_levels=np.random.uniform(size=1),
-    #    ),
-    #    axis=0,
-    #    arr=i_rep,
-    #    q_levels=np.random.uniform(size=1),
-    # )
-
     return np.reshape(np.asarray(alpha_vec), newshape=(kwargs["n_lp_samples"]))
 
 
 ### Parallel-Function ###
-# Function for parallel computing
-def fn_mc(i_nn, i_scenario, n_ens, i_sim, **kwargs):
+def fn_mc(
+    i_nn: int, i_scenario: int, n_ens: int, i_sim: int, **kwargs
+) -> None:
+    """Function for parallel computing
+
+    Parameters
+    ----------
+    i_nn : integer
+        Network type indicator
+    i_scenario : integer
+        Scenario
+    n_ens : integer
+        Size of network ensemble
+    i_sim : integer
+        Number of simulation
+
+    Returns
+    -------
+    None
+        Aggregation results are saved to data/agg
+    """
     ### Initialization ###
     # Create pool for parallel processing
     current_pool = Pool()
+
+    # Initialize rpy elements for all scoring functions
+    rpy_elements = {
+        "base": importr("base"),
+        "scoring_rules": importr("scoringRules"),
+        "crch": importr("crch"),
+        "np_cv_rules": default_converter + numpy2ri.converter,
+    }
 
     # Read out network type
     temp_nn = kwargs["nn_vec"][i_nn]
@@ -186,20 +195,21 @@ def fn_mc(i_nn, i_scenario, n_ens, i_sim, **kwargs):
         elif temp_nn == "bqn":
             # Validation set
             f_valid_ls[f"f{i_ens}"] = pred_nn["f"][i_valid, :]
-            f_valid_ls[f"alpha{i_ens}"] = pred_nn["f"][i_valid, :]
+            f_valid_ls[f"alpha{i_ens}"] = pred_nn["alpha"][i_valid, :]
 
             # Test set
             f_ls[f"f{i_ens}"] = pred_nn["f"][i_test, :]
-            f_ls[f"alpha{i_ens}"] = pred_nn["f"][i_test, :]
+            f_ls[f"alpha{i_ens}"] = pred_nn["alpha"][i_test, :]
         elif temp_nn == "hen":
             pass
 
     # Average forecasts depending on method
-    f_sum = []
-    f_valid_sum = []
-    alpha_sum = []
+    f_sum = np.empty(shape=f_ls["f0"].shape)
+    f_valid_sum = np.empty(shape=f_valid_ls["f0"].shape)
+    alpha_sum = np.empty(shape=f_ls["f0"].shape)
     if temp_nn == "drn":
         # Average parameters
+        # Sum mean and sd for each obs over ensembles
         f_sum = np.asarray(
             sum([f_ls[key] for key in f_ls.keys() if "f" in key])
         )
@@ -246,8 +256,8 @@ def fn_mc(i_nn, i_scenario, n_ens, i_sim, **kwargs):
             # Function for mixture ensemble
             def fn_apply_drn(i, **kwargs):
                 # Sample individual distribution
-                i_rep = choices(
-                    population=range(n_ens), k=kwargs["n_lp_samples"]
+                i_rep = np.random.choice(
+                    a=range(n_ens), size=kwargs["n_lp_samples"], replace=True
                 )  # with replacement
 
                 # Get distributional parameters
@@ -274,7 +284,9 @@ def fn_mc(i_nn, i_scenario, n_ens, i_sim, **kwargs):
             )
 
             # Calculate evaluation measure of simulated ensemble (mixture)
-            pred_agg["scores"] = fn_scores_ens(ens=pred_agg["f"], y=y_test)
+            pred_agg["scores"] = fn_scores_ens(
+                ens=pred_agg["f"], y=y_test, rpy_elements=rpy_elements
+            )
 
             # Transform ranks to PIT
             pred_agg["scores"]["pit"] = fn_upit(
@@ -293,6 +305,7 @@ def fn_mc(i_nn, i_scenario, n_ens, i_sim, **kwargs):
                 f=pred_agg["f"],
                 y=y_test,
                 distr="norm",
+                rpy_elements=rpy_elements,
             )
         elif (temp_nn == "drn") & (temp_agg == "vi-w"):
             # Wrapper function
@@ -305,7 +318,7 @@ def fn_mc(i_nn, i_scenario, n_ens, i_sim, **kwargs):
             )
 
             # Read out weight
-            pred_agg["w"] = est["x"]
+            pred_agg["w"] = est.x
 
             # Calculate optimally weighted VI
             pred_agg["f"] = pred_agg["w"] * f_sum
@@ -315,6 +328,7 @@ def fn_mc(i_nn, i_scenario, n_ens, i_sim, **kwargs):
                 f=pred_agg["f"],
                 y=y_test,
                 distr="norm",
+                rpy_elements=rpy_elements,
             )
         elif (temp_nn == "drn") & (temp_agg == "vi-a"):
             # Wrapper function
@@ -331,7 +345,7 @@ def fn_mc(i_nn, i_scenario, n_ens, i_sim, **kwargs):
             )
 
             # Read out intercept
-            pred_agg["a"] = est["x"]
+            pred_agg["a"] = est.x
 
             # Calculate equally weighted VI
             pred_agg["f"] = f_sum / n_ens
@@ -344,6 +358,7 @@ def fn_mc(i_nn, i_scenario, n_ens, i_sim, **kwargs):
                 f=pred_agg["f"],
                 y=y_test,
                 distr="norm",
+                rpy_elements=rpy_elements,
             )
         elif (temp_nn == "drn") & (temp_agg == "vi-aw"):
             # Wrapper function
@@ -356,8 +371,8 @@ def fn_mc(i_nn, i_scenario, n_ens, i_sim, **kwargs):
             )
 
             # Read out intercept and weight
-            pred_agg["a"] = est["x"][0]
-            pred_agg["w"] = est["x"][1]
+            pred_agg["a"] = est.x[0]
+            pred_agg["w"] = est.x[1]
 
             # Calculate optimally weighted VI
             pred_agg["f"] = pred_agg["w"] * f_sum
@@ -367,22 +382,16 @@ def fn_mc(i_nn, i_scenario, n_ens, i_sim, **kwargs):
 
             # Scores
             pred_agg["scores"] = fn_scores_distr(
-                f=pred_agg["f"], y=y_test, distr="norm"
+                f=pred_agg["f"],
+                y=y_test,
+                distr="norm",
+                rpy_elements=rpy_elements,
             )
         elif (temp_nn == "bqn") & (temp_agg == "lp"):
             # Function for mixture ensemble
             # Function on main level to allow for parallelization
 
             # Simulate ensemble for mixture
-            # pred_agg["f"] = np.asarray(
-            #    map(
-            #        lambda x: fn_apply_bqn(
-            #            x, **dict(kwargs, n_ens=n_ens, f_ls=f_ls)
-            #        ),
-            #        range(len(y_test)),
-            #    )
-            # )
-
             pred_agg["f"] = np.asarray(
                 current_pool.map(
                     func=partial(
@@ -393,7 +402,11 @@ def fn_mc(i_nn, i_scenario, n_ens, i_sim, **kwargs):
             )
 
             # Calculate evaluation measure of simulated ensemble (mixture)
-            pred_agg["scores"] = fn_scores_ens(ens=pred_agg["f"], y=y_test)
+            pred_agg["scores"] = fn_scores_ens(
+                ens=pred_agg["f"],
+                y=y_test,
+                rpy_elements=rpy_elements,
+            )
 
             # Transform ranks to PIT
             pred_agg["scores"]["pit"] = fn_upit(
@@ -413,6 +426,7 @@ def fn_mc(i_nn, i_scenario, n_ens, i_sim, **kwargs):
                 ens=pred_agg["f"],
                 y=y_test,
                 skip_evals=["e_me"],
+                rpy_elements=rpy_elements,
             )
 
             # Calculate bias of mean forecast (formula given)
@@ -445,7 +459,7 @@ def fn_mc(i_nn, i_scenario, n_ens, i_sim, **kwargs):
             )
 
             # Read out weight
-            pred_agg["w"] = est["x"]
+            pred_agg["w"] = est.x
 
             # Optimally weighted parameters
             pred_agg["alpha"] = pred_agg["w"] * alpha_sum
@@ -456,6 +470,7 @@ def fn_mc(i_nn, i_scenario, n_ens, i_sim, **kwargs):
                 ens=pred_agg["f"],
                 y=y_test,
                 skip_evals=["e_me"],
+                rpy_elements=rpy_elements,
             )
 
             # Calculate bias of mean forecast (formula given)
@@ -486,7 +501,7 @@ def fn_mc(i_nn, i_scenario, n_ens, i_sim, **kwargs):
             est = minimize(fun=fn_optim_bqn_vi_a, x0=0, method="Nelder-Mead")
 
             # Read out intercept
-            pred_agg["a"] = est["x"]
+            pred_agg["a"] = est.x
 
             # Optimally weighted parameters
             pred_agg["alpha"] = alpha_sum / n_ens
@@ -497,12 +512,13 @@ def fn_mc(i_nn, i_scenario, n_ens, i_sim, **kwargs):
                 ens=pred_agg["f"],
                 y=y_test,
                 skip_evals=["e_me"],
+                rpy_elements=rpy_elements,
             )
 
             # Calculate bias of mean forecast (formula given)
             pred_agg["scores"]["e_me"] = (
-                pred_agg["a"] + np.mean(pred_agg["alpha"], axis=1) - y_test
-            )
+                pred_agg["a"] + np.mean(pred_agg["alpha"], axis=1)
+            ) - y_test
 
             # Transform ranks to PIT
             pred_agg["scores"]["pit"] = fn_upit(
@@ -529,8 +545,8 @@ def fn_mc(i_nn, i_scenario, n_ens, i_sim, **kwargs):
             )
 
             # Read out intercept and weight
-            pred_agg["a"] = est["x"][0]
-            pred_agg["w"] = est["x"][1]
+            pred_agg["a"] = est.x[0]
+            pred_agg["w"] = est.x[1]
 
             # Optimally weighted parameters
             pred_agg["alpha"] = pred_agg["w"] * alpha_sum
@@ -541,6 +557,7 @@ def fn_mc(i_nn, i_scenario, n_ens, i_sim, **kwargs):
                 ens=pred_agg["f"],
                 y=y_test,
                 skip_evals=["e_me"],
+                rpy_elements=rpy_elements,
             )
 
             # Calculate bias of mean forecast (formula given)
@@ -608,6 +625,8 @@ def main():
     agg_meths_ls = {
         "drn": ["lp", "vi", "vi-w", "vi-a", "vi-aw"],
         "bqn": ["lp", "vi", "vi-w", "vi-a", "vi-aw"],
+        # "drn": ["lp"],
+        # "bqn": ["lp"],
     }
 
     # Models considered
@@ -623,6 +642,7 @@ def main():
 
     # Size of LP mixture samples
     n_lp_samples = 100
+    # n_lp_samples = 1000
 
     # Size of BQN quantile samples
     n_q_samples = 100
@@ -672,20 +692,20 @@ def main():
 
     ### Run parallel ###
     # Parallel(n_jobs=num_cores, backend="multiprocessing")(
-    #    delayed(fn_mc)(
-    #        i_nn=row["nn_vec"],
-    #        i_scenario=row["scenario_vec"],
-    #        n_ens=row["n_ens_vec"],
-    #        i_sim=row["n_sim"],
-    #        q_levels=q_levels,
-    #        nn_vec=nn_vec,
-    #        agg_meths_ls=agg_meths_ls,
-    #        data_in_path=data_in_path,
-    #        data_out_path=data_out_path,
-    #        n_lp_samples=n_lp_samples,
-    #        n_q_samples=n_q_samples,
-    #    )
-    #    for _, row in grid_par.iterrows()
+    #     delayed(fn_mc)(
+    #         i_nn=row["nn_vec"],
+    #         i_scenario=row["scenario_vec"],
+    #         n_ens=row["n_ens_vec"],
+    #         i_sim=row["n_sim"],
+    #         q_levels=q_levels,
+    #         nn_vec=nn_vec,
+    #         agg_meths_ls=agg_meths_ls,
+    #         data_in_path=data_in_path,
+    #         data_out_path=data_out_path,
+    #         n_lp_samples=n_lp_samples,
+    #         n_q_samples=n_q_samples,
+    #     )
+    #     for _, row in grid_par.iterrows()
     # )
 
     # Take time
@@ -693,7 +713,7 @@ def main():
 
     # Print processing time
     print(
-        f"Finished processing of all threads"
+        f"Finished processing of all threads "
         f"within {(total_end_time - total_start_time) / 1e+9}s"
     )
 
