@@ -133,8 +133,8 @@ if __name__ == "__main__":
 
     ### Initialize ###
     # Networks
-    # nn_vec = ["drn", "bqn"]  # For now without "hen"
-    nn_vec = ["bqn"]
+    nn_vec = ["drn", "bqn"]  # For now without "hen"
+    # nn_vec = ["bqn"]
 
     # Models considered
     # scenario_vec = range(1, 7, 1)
