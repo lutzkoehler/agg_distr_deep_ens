@@ -9,7 +9,11 @@ import time
 import itertools
 
 import numpy as np
+from typing import Any
+from nptyping import NDArray, Float
 from joblib import Parallel, delayed
+from rpy2.robjects import default_converter, numpy2ri
+from rpy2.robjects.packages import importr
 
 
 import fn_nn_ss
@@ -17,29 +21,44 @@ from fn_basic import fn_upit
 
 
 def run_ensemble(
-    i_scenario, i_sim, n_ens, nn_vec, data_in_path, data_out_path
-):
+    i_scenario: int,
+    i_sim: int,
+    n_ens: int,
+    nn_vec: list[str],
+    data_in_path: str,
+    data_out_path: str,
+) -> None:
+    ### Initialization ###
     # Choose number of cores
     num_cores = multiprocessing.cpu_count() / 2 - 1
     # if pc == "simu":
     #     num_cores = 10
+    # Initialize rpy elements for all scoring functions
+    rpy_elements = {
+        "base": importr("base"),
+        "scoring_rules": importr("scoringRules"),
+        "crch": importr("crch"),
+        "np_cv_rules": default_converter + numpy2ri.converter,
+    }
 
-    ### Loop over scenarios ###
-    # for i_scenario in scenario_vec:
-    #    for i_sim in range(n_sim):
     ### Get data ###
     # Load corresponding data
     temp_data_in_path = os.path.join(
         data_in_path, f"scen_{i_scenario}_sim_{i_sim}.pkl"
     )
+
+    X_train: NDArray[Any, Float]
+    y_train: NDArray[Any, Float]
+    X_test: NDArray[Any, Float]
+    y_test: NDArray[Any, Float]
     with open(temp_data_in_path, "rb") as f:
         (
             X_train,
             y_train,
             X_test,
             y_test,
-            f_opt,
-            scores_opt,
+            _,
+            _,
         ) = pickle.load(f)
 
     # Indices of validation set
@@ -49,7 +68,7 @@ def run_ensemble(
         i_valid = np.arange(start=5000, stop=6000, step=1)
 
     # Observations of validation set
-    y_valid = y_train[i_valid]
+    y_valid: NDArray[Any, Float] = y_train[i_valid]
 
     ### Loop over network variants ###
     # For-Loop over network variants
@@ -66,7 +85,7 @@ def run_ensemble(
             start_time = time.time_ns()
 
             # Postprocessing
-            pred_nn = fn_pp(
+            pred_nn: dict[str, Any] = fn_pp(
                 train=X_train,
                 test=np.r_[X_train[i_valid, :], X_test],
                 y_train=y_train,
@@ -74,6 +93,7 @@ def run_ensemble(
                 i_valid=i_valid,
                 n_ens=n_ens,
                 n_cores=num_cores,
+                rpy_elements=rpy_elements,
             )
 
             # Transform ranks
@@ -130,10 +150,10 @@ if __name__ == "__main__":
 
     ### Run sequential ###
     # for i_scenario in scenario_vec:
-    #    for i_sim in range(n_sim):
-    #        run_ensemble(
-    #            i_scenario, i_sim, n_ens, nn_vec, data_in_path, data_out_path
-    #        )
+    #     for i_sim in range(n_sim):
+    #         run_ensemble(
+    #             i_scenario, i_sim, n_ens, nn_vec, data_in_path, data_out_path
+    #         )
 
     ### Run parallel ###
     Parallel(n_jobs=7, backend="multiprocessing")(
