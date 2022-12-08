@@ -62,6 +62,7 @@ def main():
 
     # Skill scores
     sr_skill = ["crps", "logs", "mae", "rmse"]
+    # sr_skill = ["crps"]
 
     # Vector of column names
     col_vec_pp = (
@@ -92,6 +93,7 @@ def main():
         # For-Loop over scenarios and simulations
         for i_scenario in scenario_vec:
             for i_sim in range(n_sim):
+                ### Calculate optimal scores based on data generation ###
                 if temp_nn == nn_vec[0]:
                     # Load data
                     filename = f"scen_{i_scenario}_sim_{i_sim}.pkl"
@@ -99,20 +101,21 @@ def main():
                         os.path.join(data_sim_path, filename), "rb"
                     ) as f:
                         (
-                            X_train,
-                            y_train,
-                            X_test,
-                            y_test,
-                            f_opt,
+                            _,  # X_train
+                            _,  # y_train
+                            _,  # X_test
+                            _,  # y_test
+                            _,  # f_opt
                             scores_opt,
                         ) = pickle.load(f)
 
                     # Make entry for optimal forecast
-                    new_row = {}
-                    new_row["model"] = i_scenario
-                    new_row["n_sim"] = i_sim
-                    new_row["nn"] = "ref"
-                    new_row["type"] = "ref"
+                    new_row = {
+                        "model": i_scenario,
+                        "n_sim": i_sim,
+                        "nn": "ref",
+                        "type": "ref",
+                    }
 
                     # For-Loop over evaluation measures
                     for temp_sr in sr_eval:
@@ -143,17 +146,19 @@ def main():
                         ignore_index=True,
                     )
 
+                ### Read out scores with ensemble size 1 ###
                 # For-Loop over repetitions
                 temp_dict = {}
                 for i_rep in range(n_rep):
                     # Write in data frame
-                    new_row = {}
-                    new_row["model"] = i_scenario
-                    new_row["n_sim"] = i_sim
-                    new_row["nn"] = temp_nn
-                    new_row["type"] = "ind"
-                    new_row["n_ens"] = 1
-                    new_row["n_rep"] = i_rep
+                    new_row = {
+                        "model": i_scenario,
+                        "n_sim": i_sim,
+                        "nn": temp_nn,
+                        "type": "ind",
+                        "n_ens": 1,
+                        "n_rep": i_rep,
+                    }
 
                     # Load ensemble member
                     filename = os.path.join(
@@ -162,7 +167,9 @@ def main():
                     with open(
                         os.path.join(data_ens_path, filename), "rb"
                     ) as f:
-                        pred_nn, y_valid, y_test = pickle.load(f)
+                        pred_nn, _, _ = pickle.load(
+                            f
+                        )  # pred_nn, y_valid, y_test
 
                     # Get set size of first repetition
                     for temp in ["n_train", "n_valid", "n_test"]:
@@ -178,8 +185,9 @@ def main():
                                 )
 
                         # Read out set sizes
-                        new_row[temp] = temp_dict[temp]  # ignore
+                        new_row[temp] = temp_dict[temp]
 
+                    # TODO: Check if correct set gets dropped
                     # Cut validation data from scores
                     pred_nn["scores"] = pred_nn["scores"].drop(
                         range(pred_nn["n_valid"])
@@ -218,18 +226,20 @@ def main():
                         ignore_index=True,
                     )
 
+                ### Read out scores for aggregated ensembles ###
                 # For-Loop over aggregation methods
                 for temp_agg in agg_meths:
                     # For-Loop over number of aggregated members
                     for i_ens in n_ens_vec:
                         # Write in data frame
-                        new_row = {}
-                        new_row["model"] = i_scenario
-                        new_row["n_sim"] = i_sim
-                        new_row["nn"] = temp_nn
-                        new_row["type"] = temp_agg
-                        new_row["n_ens"] = i_ens
-                        new_row["n_rep"] = 0
+                        new_row = {
+                            "model": i_scenario,
+                            "n_sim": i_sim,
+                            "nn": temp_nn,
+                            "type": temp_agg,
+                            "n_ens": i_ens,
+                            "n_rep": 0,
+                        }
 
                         # Get set sizes
                         for temp in ["n_train", "n_valid", "n_test"]:
@@ -297,9 +307,10 @@ def main():
                             ][temp_sr]
 
                             # Calculate skill
-                            new_row[f"{temp_sr}s"] = (
-                                s_ref - new_row[temp_sr]
-                            ) / (s_ref - s_opt)
+                            temp_entry = (s_ref - new_row[temp_sr]) / (
+                                s_ref - s_opt
+                            )
+                            new_row[f"{temp_sr}s"] = temp_entry.iloc[0]
 
                         # Append to data frame
                         df_scores = pd.concat(

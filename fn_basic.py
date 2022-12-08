@@ -2,6 +2,7 @@
 # Helper functions
 
 import numpy as np
+from typing import Any
 
 
 def fn_upit(ranks, max_rank):
@@ -30,7 +31,9 @@ def fn_upit(ranks, max_rank):
 
 
 ### Update hyperparameters ###
-def update_hpar(hpar_ls, in_ls):
+def update_hpar(
+    hpar_ls: dict[str, Any], in_ls: dict[str, Any]
+) -> dict[str, Any]:
     """Update hyperparameters
 
     Parameters

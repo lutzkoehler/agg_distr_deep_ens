@@ -722,5 +722,5 @@ if __name__ == "__main__":
     # plot_example_aggregation()
 
     plot_panel_model()
-    # plot_panel_boxplot()
-    # plot_pit_ens()
+    plot_panel_boxplot()
+    plot_pit_ens()
