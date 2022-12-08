@@ -36,9 +36,9 @@ def fn_cover(x, alpha=None, n_ens=20):
     ### Coverage calculation ###
     # PIT or rank?
     if min(x) < 1:
-        res = np.mean(x.loc[(alpha / 2 <= x) & (x <= (1 - alpha / 2))])
+        res = np.mean((alpha / 2 <= x) & (x <= (1 - alpha / 2)))
     else:
-        res = np.mean(x[x in range(2, n_ens + 1)])
+        res = np.mean(x.isin(range(2, n_ens + 1)))
 
     # Output as percentage
     return 100 * res
@@ -47,6 +47,13 @@ def fn_cover(x, alpha=None, n_ens=20):
 ### BQN: Bernstein Quantile function ###
 def bern_quants(alpha, q_levels):
     """Function that calculates quantiles for given coefficients
+
+    1. Called from BQN LP: alpha is vector of length "dimension", q_level
+       is scalar
+    2. Called after BQN NN: Converting n alpha predictions into fixed set of
+       quantiles
+    3. Called from BQN VI-a/w: Optimizing a and/or w based on validation set
+       finally minimizing sample CRPS
 
     Parameters
     ----------
@@ -68,18 +75,13 @@ def bern_quants(alpha, q_levels):
 
     ### Calculation ###
     # Calculate quantiles (sum of coefficients times basis polynomials)
-    # fac = np.asarray(
-    #    list(
-    #        map(
-    #            lambda x: ss.binom.pmf(x, n=p_degree, p=q_levels),
-    #            range(p_degree + 1),
-    #        )
-    #    )
-    # )
     if len(q_levels) == 1:
+        # 1. Called from LP sampling (one set of bern_coeffs and one quantile)
         fac = ss.binom.pmf(list(range(p_degree + 1)), n=p_degree, p=q_levels)
         return np.dot(alpha, fac)
     else:
+        # 3. Called from Neural Network based on predicted bern_coeffs and
+        # given quantiles
         fac = [
             ss.binom.pmf(list(range(p_degree + 1)), n=p_degree, p=current_q)
             for current_q in q_levels
@@ -87,17 +89,9 @@ def bern_quants(alpha, q_levels):
         fac = np.asarray(fac)
         return np.dot(alpha, fac.T)
 
-    # if len(q_levels) == 1:
-    #    res = np.dot(alpha, fac)
-    # else:
-    #    res = np.dot(alpha, fac.T)
-
-    # Return quantiles
-    # return res
-
 
 ### ENS: Evaluation of ensemble ###
-def fn_scores_ens(ens, y, skip_evals=None, scores_ens=True):
+def fn_scores_ens(ens, y, skip_evals=None, scores_ens=True, rpy_elements=None):
     """Function to calculate evaluation measures of scores
 
     Parameters
@@ -137,10 +131,14 @@ def fn_scores_ens(ens, y, skip_evals=None, scores_ens=True):
     """
     ### Initiation ###
     # Load R packages
-    # To use np arrays in rpy2:
-    base = importr("base")
-    scoring_rules = importr("scoringRules")
-    np_cv_rules = default_converter + numpy2ri.converter
+    if rpy_elements is None:
+        base = importr("base")
+        scoring_rules = importr("scoringRules")
+        np_cv_rules = default_converter + numpy2ri.converter
+    else:
+        base = rpy_elements["base"]
+        scoring_rules = rpy_elements["scoring_rules"]
+        np_cv_rules = rpy_elements["np_cv_rules"]
     # Convert y to rpy2.robjects.vectors.FloatVector
     y_vector = vectors.FloatVector(y)
 
@@ -151,6 +149,8 @@ def fn_scores_ens(ens, y, skip_evals=None, scores_ens=True):
     # Size of COSMO-DE-EPS
     n_cosmo = 20
 
+    # ! Potential error
+    # TODO: Check if ens is ever just a 1D array
     # Get number of ensembles
     n = ens.shape[0]
 
@@ -215,13 +215,14 @@ def fn_scores_ens(ens, y, skip_evals=None, scores_ens=True):
         else:
             # Choose type 8, as suggested in ?quantile (and bias observed for
             # LP for default)
-            # TODO: look for method="median_unbiased" quantile
+            # * Type 8 median_unbiased available from numpy>=1.22 (upgraded
+            # * from 1.21.5)
             scores_ens["lgt"] = np.apply_along_axis(
                 func1d=lambda x: np.diff(
                     np.quantile(
                         a=x,
                         q=np.hstack((1, 20)) / (n_cosmo + 1),
-                        # method="median_unbiased",
+                        method="median_unbiased",
                     )
                 ),
                 axis=1,
@@ -245,7 +246,9 @@ def fn_scores_ens(ens, y, skip_evals=None, scores_ens=True):
     return scores_ens
 
 
-def fn_scores_distr(f, y, distr="tlogis", n_ens=20, skip_evals=None):
+def fn_scores_distr(
+    f, y, distr="tlogis", n_ens=20, skip_evals=None, rpy_elements=None
+):
     """Function for prediciton based on the distributional parameters
 
     Parameters
@@ -281,14 +284,19 @@ def fn_scores_distr(f, y, distr="tlogis", n_ens=20, skip_evals=None):
     """
     ### Initiation ###
     # Load R packages
-    scoring_rules = importr("scoringRules")
-    crch = importr("crch")
-    np_cv_rules = default_converter + numpy2ri.converter
+    if rpy_elements is None:
+        scoring_rules = importr("scoringRules")
+        crch = importr("crch")
+        np_cv_rules = default_converter + numpy2ri.converter
+    else:
+        scoring_rules = rpy_elements["scoring_rules"]
+        crch = rpy_elements["crch"]
+        np_cv_rules = rpy_elements["np_cv_rules"]
     # Convert y to rpy2.robjects.vectors.FloatVector
     y_vector = vectors.FloatVector(y)
 
     # Input check
-    if distr not in ["tlogis", "norm"] and any(f[:, 1] < 0):
+    if (distr not in ["tlogis", "norm"]) & any(f[:, 1] < 0):
         print("Non-positive scale forecast!")
 
     ### Data preparation ###
