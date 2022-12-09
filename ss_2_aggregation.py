@@ -641,8 +641,8 @@ def main():
     n_ens_vec = np.arange(start=2, stop=12, step=2)
 
     # Size of LP mixture samples
-    n_lp_samples = 100
-    # n_lp_samples = 1000
+    # n_lp_samples = 100
+    n_lp_samples = 1000  # 1000 solves problem of relatively low LP CRPSS
 
     # Size of BQN quantile samples
     n_q_samples = 100
