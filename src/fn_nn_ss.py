@@ -15,14 +15,13 @@ from nptyping import NDArray, Float, Int
 import scipy.stats as ss
 import tensorflow as tf
 import tensorflow_probability as tfp
-from tensorflow.keras import Model  # type: ignore
 from tensorflow.keras.backend import clear_session  # type: ignore
 from tensorflow.keras.callbacks import EarlyStopping  # type: ignore
-from tensorflow.keras.layers import Concatenate, Dense, Input  # type: ignore
 from tensorflow.keras.optimizers import Adam  # type: ignore
 
 from fn_basic import update_hpar
 from fn_eval import bern_quants, fn_scores_distr, fn_scores_ens
+from fn_nn_architecture import get_drn_base_model, get_bqn_base_model
 
 ### DRN ###
 ## Distribution: Normal distribution
@@ -120,7 +119,7 @@ def drn_pp(
     ### Initiation ###
     # Disable GPU
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-    tf.keras.backend.set_floatx("float64")
+    # tf.keras.backend.set_floatx("float64")
 
     # Number of cores
     if n_cores is None:
@@ -157,17 +156,21 @@ def drn_pp(
 
     # Get standard logistic distribution
     tfd = tfp.distributions.Normal(
-        loc=np.float64(0), scale=np.float64(1)
+        loc=0,
+        scale=1
+        # loc=np.float64(0), scale=np.float64(1)
     )  # , dtype=tf.float64)
 
     # Custom loss function
     def custom_loss(y_true, y_pred):
         # Get location and scale
         mu = K.dot(
-            y_pred, K.constant(np.r_[1, 0], shape=(2, 1), dtype=np.float64)
+            y_pred,
+            K.constant(np.r_[1, 0], shape=(2, 1)),  # , dtype=np.float64)
         )
         sigma = K.dot(
-            y_pred, K.constant(np.r_[0, 1], shape=(2, 1), dtype=np.float64)
+            y_pred,
+            K.constant(np.r_[0, 1], shape=(2, 1)),  # , dtype=np.float64)
         )
 
         # Standardization
@@ -215,28 +218,11 @@ def drn_pp(
     X_pred = (test - tr_center) / tr_scale
 
     ### Build network ###
-    # Input
-    input = Input(shape=X_train.shape[1], name="input", dtype="float64")
-
-    # Hidden layers
-    hidden_1 = Dense(
-        units=nn_ls["lay1"], activation=nn_ls["actv"], dtype="float64"
-    )(input)
-    hidden_2 = Dense(
-        units=nn_ls["lay1"] / 2, activation=nn_ls["actv"], dtype="float64"
-    )(hidden_1)
-
-    # Different activation functions for output
-    loc_out = Dense(units=1, dtype="float64")(hidden_2)
-    scale_out = Dense(units=1, activation="softplus", dtype="float64")(
-        hidden_2
+    model = get_drn_base_model(
+        input_length=X_train.shape[1],
+        hpar_ls=nn_ls,
+        dtype="flaot32",
     )
-
-    # Concatenate output
-    output = Concatenate()([loc_out, scale_out])
-
-    # Define model
-    model = Model(inputs=input, outputs=output)
 
     ### Estimation ###
     # Compile model
@@ -280,7 +266,7 @@ def drn_pp(
     runtime_pred = end_tm - start_tm
 
     # Delete model
-    del input, hidden_1, hidden_2, loc_out, scale_out, output, model
+    del model
 
     # Clear memory and session
     clear_session()
@@ -417,7 +403,7 @@ def bqn_pp(
     ### Initiation ###
     # Disable GPU
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-    tf.keras.backend.set_floatx("float64")
+    # tf.keras.backend.set_floatx("float64")
 
     # Number of cores
     if n_cores is None:
@@ -493,15 +479,18 @@ def bqn_pp(
             Mean quantile loss across all observations
         """
         # Quantiles calculated via basis and increments -> q_shape: (64,99)
-        q = K.dot(K.cumsum(y_pred, axis=1), K.constant(B.T, dtype=np.float64))
+        q = K.dot(
+            K.cumsum(y_pred, axis=1), K.constant(B.T)
+        )  # , dtype=np.float64))
 
         # Calculate individual quantile scores
         err = y_true - q  # err_shape (64,99)
         e1 = err * K.constant(
-            value=q_levels_loss, shape=(1, nn_ls["n_q"]), dtype=np.float64
+            value=q_levels_loss, shape=(1, nn_ls["n_q"])  # , dtype=np.float64
         )  # e1_shape (64,99)
         e2 = err * K.constant(
-            value=q_levels_loss - 1, shape=(1, nn_ls["n_q"]), dtype=np.float64
+            value=q_levels_loss - 1,
+            shape=(1, nn_ls["n_q"]),  # , dtype=np.float64
         )
 
         # Find correct values (max) and return mean
@@ -542,29 +531,9 @@ def bqn_pp(
     X_pred = (test - tr_center) / tr_scale
 
     ### Build network ###
-    # Input
-    input = Input(shape=X_train.shape[1], name="input", dtype="float64")
-
-    # Hidden layers
-    hidden_1 = Dense(
-        units=nn_ls["lay1"], activation=nn_ls["actv"], dtype="float64"
-    )(input)
-    hidden_2 = Dense(
-        units=nn_ls["lay1"] / 2, activation=nn_ls["actv"], dtype="float64"
-    )(hidden_1)
-
-    # Different activation functions for output (alpha_0 and positive
-    # increments)
-    alpha0_out = Dense(units=1, dtype="float64")(hidden_2)
-    alphai_out = Dense(
-        units=nn_ls["p_degree"], activation="softplus", dtype="float64"
-    )(hidden_2)
-
-    # Concatenate output
-    output = Concatenate()([alpha0_out, alphai_out])
-
-    # Define model
-    model = Model(inputs=input, outputs=output)
+    model = get_bqn_base_model(
+        input_length=X_train.shape[1], hpar_ls=nn_ls, dtype="float32"
+    )
 
     ### Estimation ###
     # Compile model
@@ -609,7 +578,7 @@ def bqn_pp(
     runtime_pred = end_tm - start_tm
 
     # Delete model
-    del input, hidden_1, hidden_2, alpha0_out, alphai_out, output, model
+    del model
 
     # Clear memory and session
     clear_session()

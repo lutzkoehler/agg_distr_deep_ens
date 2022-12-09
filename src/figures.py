@@ -361,9 +361,9 @@ def plot_panel_model():
 
         ### Prepare data ###
         # Remove negative CRPSSS smaller than 5%
-        df_plot = df_plot[
-            (df_plot["metric"] != "crpss") | (df_plot["score"] >= -5)
-        ]
+        # df_plot = df_plot[
+        #     (df_plot["metric"] != "crpss") | (df_plot["score"] >= -5)
+        # ]
 
         # Rename networks
         df_plot["nn"] = df_plot["nn"].str.upper()

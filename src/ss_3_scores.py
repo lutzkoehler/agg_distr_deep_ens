@@ -306,6 +306,8 @@ def main():
                                 & (df_scores["nn"] == "ref")
                             ][temp_sr]
 
+                            if s_ref == np.Inf:
+                                print(temp_nn)
                             # Calculate skill
                             temp_entry = (s_ref - new_row[temp_sr]) / (
                                 s_ref - s_opt

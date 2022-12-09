@@ -28,9 +28,26 @@ def run_ensemble(
     data_in_path: str,
     data_out_path: str,
 ) -> None:
+    """Run different NN types for n_ens times and save results
+
+    Parameters
+    ----------
+    i_scenario : int
+        Scenario / Model number
+    i_sim : int
+        Simulation number
+    n_ens : int
+        Ensemble size
+    nn_vec : list[str]
+        Contains NN types
+    data_in_path : str
+        Location of generated simulation data (see ss_0_data.py)
+    data_out_path : str
+        Location to save results
+    """
     ### Initialization ###
     # Choose number of cores
-    num_cores = multiprocessing.cpu_count() / 2 - 1
+    num_cores = multiprocessing.cpu_count() - 1
     # if pc == "simu":
     #     num_cores = 10
     # Initialize rpy elements for all scoring functions
@@ -53,9 +70,9 @@ def run_ensemble(
     y_test: NDArray[Any, Float]
     with open(temp_data_in_path, "rb") as f:
         (
-            X_train,
+            X_train,  # n_train = 6000
             y_train,
-            X_test,
+            X_test,  # n_test = 10_000
             y_test,
             _,
             _,
@@ -65,7 +82,9 @@ def run_ensemble(
     if i_scenario == 6:
         i_valid = np.arange(start=2500, stop=3000, step=1)
     else:
-        i_valid = np.arange(start=5000, stop=6000, step=1)
+        i_valid = np.arange(
+            start=5000, stop=6000, step=1
+        )  # n_valid = 1000 -> n_train = 5000
 
     # Observations of validation set
     y_valid: NDArray[Any, Float] = y_train[i_valid]

@@ -1,15 +1,20 @@
 {
+    "RAND_METHOD": "bagging",
     "DATA_PATHS": {
         "DATA_DIR": "../data/",
-        "SIMULATION_PATH": "/ss_data/",
-        "ENSEMBLE_FORECASTS": "/model/"
+        "SIMULATION_DATA_PATH": "/ss_data/",
+        "ENSEMBLE_FORECASTS": "/model/",
+        "AGG_FORECASTS": "/agg"
     },
     "PARAMETERS": {
         "NN_VEC": [
             "drn",
             "bqn"
         ],
-        "N_SCENARIO": 6,
+        "SCENARIO_VEC": [
+            1,
+            4
+        ],
         "N_SIM": 10,
         "N_ENS": 10,
         "N_TRAIN": 6000,
