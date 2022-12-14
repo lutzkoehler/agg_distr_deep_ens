@@ -37,7 +37,8 @@ class DRNBaseModel(BaseModel):
             "lay1": 64,
             "actv": "softplus",
             "nn_verbose": 0,
-            "dropout_p": 0.5,
+            "p_dropout": 0.5,
+            "p_dropout_input": 0.2,
         }
         self.training = False
         if "training" in kwargs.keys():
@@ -258,33 +259,36 @@ class DRNDropoutModel(DRNBaseModel):
 
         tf.keras.backend.set_floatx(self.dtype)
 
+        # Extract params
+        p_dropout = self.hpar["p_dropout"]
+
         ### Build network ###
         # Input
         input = Input(shape=(input_length,), name="input", dtype=self.dtype)
         # Input dropout
-        input_d = Dropout(rate=0.2, noise_shape=(input_length,))(
-            input, training=training
-        )
+        input_d = Dropout(
+            rate=self.hpar["p_dropout_input"], noise_shape=(input_length,)
+        )(input, training=training)
 
         # Hidden layer 1
-        n_units_1 = int(self.hpar["lay1"] / (1 - self.hpar["dropout_p"]))
+        n_units_1 = int(self.hpar["lay1"] / (1 - p_dropout))
         hidden_1 = Dense(
             units=n_units_1,
             activation=self.hpar["actv"],
             dtype=self.dtype,
         )(input_d)
-        hidden_1_d = Dropout(rate=0.5, noise_shape=(n_units_1,))(
+        hidden_1_d = Dropout(rate=p_dropout, noise_shape=(n_units_1,))(
             hidden_1, training=training
         )
 
         # Hidden layer 2
-        n_units_2 = int(self.hpar["lay1"] / ((1 - self.hpar["dropout_p"]) * 2))
+        n_units_2 = int(self.hpar["lay1"] / ((1 - p_dropout) * 2))
         hidden_2 = Dense(
             units=n_units_2,
             activation=self.hpar["actv"],
             dtype=self.dtype,
         )(hidden_1_d)
-        hidden_2_d = Dropout(rate=0.5, noise_shape=(n_units_2,))(
+        hidden_2_d = Dropout(rate=p_dropout, noise_shape=(n_units_2,))(
             hidden_2, training=training
         )
 
