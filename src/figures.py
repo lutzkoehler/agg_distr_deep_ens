@@ -338,7 +338,10 @@ def plot_panel_model():
 
         ### PDF ###
         fig, axes = plt.subplots(
-            len(score_labels), len(nn_vec), figsize=(8.27, 11.69)
+            len(score_labels),
+            len(nn_vec),
+            figsize=(8.27, 11.69),
+            squeeze=False,  # Always return 2d array even if only 1d
         )
 
         # For-Loop over networks
@@ -450,7 +453,10 @@ def plot_panel_boxplot():
         ### PDF ###
         # Make plot
         fig, axes = plt.subplots(
-            len(nn_vec), len(agg_names.keys()), figsize=(15, 10)
+            len(nn_vec),
+            len(agg_names.keys()),
+            figsize=(15, 10),
+            squeeze=False,
         )
         sample_size = len(df_plot["crpss"].iloc[0])
         fig.suptitle(
@@ -605,7 +611,10 @@ def plot_pit_ens():
 
         # Make plot
         fig, axes = plt.subplots(
-            len(nn_vec), len(["ens", *agg_meths]), figsize=(15, 5)
+            len(nn_vec),
+            len(["ens", *agg_meths]),
+            figsize=(15, 5),
+            squeeze=False,
         )
         fig.suptitle(f"{ens_method} - Model {i_scenario}")
 
@@ -692,7 +701,7 @@ if __name__ == "__main__":
     sr_skill = ["crps"]
 
     # Network types
-    nn_vec = ["drn", "bqn"]
+    nn_vec = CONFIG["PARAMS"]["NN_VEC"]
 
     # Names of aggregation methods
     agg_names = {
