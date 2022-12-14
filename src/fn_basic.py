@@ -1,8 +1,9 @@
 ## Function file
 # Helper functions
 
-import numpy as np
 from typing import Any
+
+import numpy as np
 
 
 def fn_upit(ranks, max_rank):
