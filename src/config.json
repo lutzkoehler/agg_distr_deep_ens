@@ -1,5 +1,5 @@
 {
-    "ENS_METHOD": "mc_dropout",
+    "ENS_METHOD": "random_init",
     "_available_ENS_METHOD": [
         "bagging",
         "standard_dropout",
@@ -15,7 +15,8 @@
     },
     "PARAMS": {
         "NN_VEC": [
-            "drn"
+            "drn",
+            "bqn"
         ],
         "_available_NN_VEC": [
             "drn",
@@ -41,7 +42,7 @@
             ]
         },
         "N_SIM": 10,
-        "N_ENS": 40
+        "N_ENS": 10
     },
     "NUM_CORES": 10
 }

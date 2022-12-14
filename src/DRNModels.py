@@ -256,7 +256,37 @@ class DRNDropoutModel(DRNBaseModel):
     def _get_architecture(
         self, input_length: int, training: bool = False
     ) -> Model:
+        """Construct and return DRN base model
 
+        Architecture:
+
+        Layer (type)                Output Shape    Param # Connected to
+        =======================================================================
+        input (InputLayer)          [(None, 5)]     0       []
+        dropout (Dropout)           (None, 5)       0       ['input[0][0]']
+        dense (Dense)               (None, 128)     768     ['dropout[0][0]']
+        dropout_1 (Dropout)         (None, 128)     0       ['dense[0][0]']
+        dense_1 (Dense)             (None, 64)      8256    ['dropout_1[0][0]']
+        dropout_2 (Dropout)         (None, 64)      0       ['dense_1[0][0]']
+        dense_2 (Dense)             (None, 1)       65      ['dropout_2[0][0]']
+        dense_3 (Dense)             (None, 1)       65      ['dropout_2[0][0]']
+        concatenate (Concatenate)   (None, 2)       0       ['dense_2[0][0]',
+                                                             'dense_3[0][0]']
+
+        Parameters
+        ----------
+        input_length : int
+            Number of predictors
+        hpar_ls : dict[str, Any]
+            Contains several hyperparameter
+        dtype : str
+            Should be either float32 or float64
+
+        Returns
+        -------
+        Model
+            _description_
+        """
         tf.keras.backend.set_floatx(self.dtype)
 
         # Extract params
