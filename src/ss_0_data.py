@@ -1,15 +1,16 @@
 ## Simulation study: Script 0
 # Simulate underlying data
 
+import itertools
+import json
 import os
 import pickle
-import itertools
+from typing import Any
 
 import numpy as np
-from typing import Any
-from nptyping import NDArray, Float, Int
 import scipy.stats as ss
 from joblib import Parallel, delayed
+from nptyping import Float, Int, NDArray
 from rpy2.robjects import default_converter, numpy2ri
 from rpy2.robjects.conversion import localconverter
 from rpy2.robjects.packages import importr
@@ -18,6 +19,22 @@ from fn_eval import fn_scores_distr, fn_scores_ens
 
 
 def simulate_data(i_scenario: int, i_sim: int, data_out_path: str) -> None:
+    """Simulates data based on 6 scenarios
+
+    Saves the following information to a pickle file:
+    [X_train, y_train, X_test, y_test, f_opt, scores_opt]
+
+    Parameters
+    ----------
+    i_scenario : int
+        Scenario / Model number
+    i_sim : int
+        Simulation run
+    data_out_path : str
+        Location to save results
+    config : dict
+        Config file (see config.json)
+    """
     ### Setup R function calls ###
     # Initialize rpy elements for all scoring functions
     multiRNG = importr("MultiRNG")
@@ -35,12 +52,12 @@ def simulate_data(i_scenario: int, i_sim: int, data_out_path: str) -> None:
 
     # Size of training sets
     if i_scenario == 6:
-        n_train: int = int(3000)
+        n_train: int = int(3_000)
     else:
-        n_train: int = int(6000)
+        n_train: int = int(6_000)
 
     # Size of test sets
-    n_test: int = int(1e4)
+    n_test: int = 10_000
 
     # Indices for training and test set
     i_train: list = list(range(n_train))
@@ -184,7 +201,7 @@ def simulate_data(i_scenario: int, i_sim: int, data_out_path: str) -> None:
     n_sample: int = 0  # To get rid of warnings
     if i_scenario == 4:
         # Number of samples to draw
-        n_sample = 1000
+        n_sample = 1_000
     else:
         # Normal distribution
         # Col 0: loc, col 1: scale
@@ -271,28 +288,36 @@ def simulate_data(i_scenario: int, i_sim: int, data_out_path: str) -> None:
 
 
 if __name__ == "__main__":
+    ### Get Config ###
+    with open("src/config.json", "rb") as f:
+        CONFIG = json.load(f)
+
     ### Settings ###
     # Path for simulated data
-    data_out_path = os.path.join("data", "ss_data")
+    data_out_path = os.path.join(
+        CONFIG["PATHS"]["DATA_DIR"], CONFIG["PATHS"]["SIM_DATA"]
+    )
 
     ### Initialize ###
     # Models considered
-    # scenario_vec = range(1, 7, 1)
-    scenario_vec = [1, 4]
+    scenario_vec = CONFIG["PARAMS"]["SCENARIO_VEC"]
 
     # Number of simulations
-    # n_sim = 50
-    n_sim: int = 10
+    n_sim: int = CONFIG["PARAMS"]["N_SIM"]
 
+    # Number of cores
+    num_cores = CONFIG["NUM_CORES"]
     ### Run sequential ###
     # for i_scenario in scenario_vec:
     #    for i_sim in range(n_sim):
     #        simulate_data(i_scenario=i_scenario, i_sim=i_sim)
 
     ### Run parallel ###
-    Parallel(n_jobs=7, backend="multiprocessing")(
+    Parallel(n_jobs=num_cores, backend="multiprocessing")(
         delayed(simulate_data)(
-            i_scenario=i_scenario, i_sim=i_sim, data_out_path=data_out_path
+            i_scenario=i_scenario,
+            i_sim=i_sim,
+            data_out_path=data_out_path,
         )
         for i_scenario, i_sim in itertools.product(scenario_vec, range(n_sim))
     )

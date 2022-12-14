@@ -1,100 +1,20 @@
 ## Script for evaluation of aggregation methods of NN methods
 
+import json
 import os
 import pickle
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
 import scipy.stats as ss
-
-# Path for figures
-pdf_path = "plots"
-
-# Path of data
-data_path = "data"
-
-# Path of network ensemble data
-data_ss_ens_path = os.path.join(data_path, "model")
-
-# Path of aggregated network data
-data_ss_agg_path = os.path.join(data_path, "agg")
-
-# Models considered
-scenario_vec = [1, 4]
-
-# Number of simulations
-n_sim = 10
-
-# Vector of ensemble members
-n_ens_vec = np.arange(2, 12, 2)
-
-### Initialize ###
-# Vector for plotting on [0,1]
-x_plot = np.arange(0, 1, 0.001)
-x_plot50 = np.arange(0, 50, 0.01)
-
-# Evaluation measures
-sr_eval = ["crps", "me", "lgt", "cov"]
-
-# Skill scores
-sr_skill = ["crps"]
-
-# Network types
-nn_vec = ["drn", "bqn"]
-
-# Names of aggregation methods
-agg_names = {
-    "lp": "Linear Pool",
-    "vi": "Vincentization",
-    "vi-a": "Vincentization (a)",
-    "vi-w": "Vincentization (w)",
-    "vi-aw": "Vincentization (a, w)",
-}
-agg_abr = {
-    "lp": r"$LP$",
-    "vi": r"$V_0^=$",
-    "vi-a": r"$V_a^=$",
-    "vi-w": r"$V_0^w$",
-    "vi-aw": r"$V_a^w$",
-}
-
-# Aggregation methods
-agg_meths = list(agg_names.keys())
-
-# Methods with coefficient estimation
-coeff_meths = ["vi-a", "vi-w", "vi-aw"]
-
-# Get colors
-cols = sns.color_palette("Dark2", 8, as_cmap=True)
-# Colors of aggregation methods
-agg_col = {
-    "lp": cols.colors[4],  # type: ignore
-    "vi": cols.colors[5],  # type: ignore
-    "vi-a": cols.colors[2],  # type: ignore
-    "vi-w": cols.colors[0],  # type: ignore
-    "vi-aw": cols.colors[3],  # type: ignore
-    "ens": cols.colors[7],  # type: ignore
-    "opt": cols.colors[1],  # type: ignore
-}
-
-# Line types of aggregation methods
-agg_lty = {
-    "lp": "dashed",
-    "vi": "solid",
-    "vi-a": "solid",
-    "vi-w": "solid",
-    "vi-aw": "solid",
-    "ens": "dashdot",
-    "opt": "dashdot",
-}
+import seaborn as sns
 
 
 def plot_example_aggregation():
     ### Section 2: Example aggregation ###
     # Evaluations for plotting
-    n_plot = 1000
+    n_plot = 1_000
 
     # Aggregation methods to plot
     agg_meths_plot = ["lp", "vi", "vi-a", "vi-w", "vi-aw"]
@@ -464,7 +384,7 @@ def plot_panel_model():
             loc="upper center",
             ncol=len(score_labels),
         )
-        fig.suptitle(f"Model {i_scenario}")
+        fig.suptitle(f"{ens_method} - Model {i_scenario}")
         for ax in axes.flatten():  # type: ignore
             ax.legend().set_visible(False)
 
@@ -533,7 +453,9 @@ def plot_panel_boxplot():
             len(nn_vec), len(agg_names.keys()), figsize=(15, 10)
         )
         sample_size = len(df_plot["crpss"].iloc[0])
-        fig.suptitle(f"Model {i_scenario} - Sample size: {sample_size}")
+        fig.suptitle(
+            f"{ens_method} - Model {i_scenario} - Sample size: {sample_size}"
+        )
 
         # For-Loop over networks
         for i, temp_nn in enumerate([x.upper() for x in nn_vec]):
@@ -564,7 +486,7 @@ def plot_panel_boxplot():
             pdf_path, f"ss_gg_panel_crpss_boxplots_model_{i_scenario}.pdf"
         )
         fig.savefig(filename)
-        print(f"PIT saved to {filename}")
+        print(f"CRPSS boxplots saved to {filename}")
 
 
 def plot_pit_ens():
@@ -685,7 +607,7 @@ def plot_pit_ens():
         fig, axes = plt.subplots(
             len(nn_vec), len(["ens", *agg_meths]), figsize=(15, 5)
         )
-        fig.suptitle(f"Model {i_scenario}")
+        fig.suptitle(f"{ens_method} - Model {i_scenario}")
 
         leg_labels = {"ens": "DE", "opt": r"$F^*$", **agg_abr}
 
@@ -719,6 +641,107 @@ def plot_pit_ens():
 
 
 if __name__ == "__main__":
+    ### Get Config ###
+    with open("src/config.json", "rb") as f:
+        CONFIG = json.load(f)
+    ens_method = CONFIG["ENS_METHOD"]
+
+    # Path for figures
+    pdf_path = os.path.join(CONFIG["PATHS"]["PLOTS_DIR"], ens_method)
+
+    # Path of data
+    data_path = os.path.join(CONFIG["PATHS"]["DATA_DIR"], ens_method)
+
+    # Path of network ensemble data
+    data_ss_ens_path = os.path.join(
+        CONFIG["PATHS"]["DATA_DIR"],
+        ens_method,
+        CONFIG["PATHS"]["ENSEMBLE_F"],
+    )
+
+    # Path of aggregated network data
+    data_ss_agg_path = os.path.join(
+        CONFIG["PATHS"]["DATA_DIR"],
+        ens_method,
+        CONFIG["PATHS"]["AGG_F"],
+    )
+
+    # Models considered
+    scenario_vec = CONFIG["PARAMS"]["SCENARIO_VEC"]
+
+    # Number of simulations
+    n_sim = CONFIG["PARAMS"]["N_SIM"]
+
+    # Ensemble size
+    n_ens = CONFIG["PARAMS"]["N_ENS"]
+    # Vector of ensemble members
+    step_size = 2
+    n_ens_vec = np.arange(
+        start=step_size, stop=n_ens + step_size, step=step_size
+    )
+
+    ### Initialize ###
+    # Vector for plotting on [0,1]
+    x_plot = np.arange(0, 1, 0.001)
+    x_plot50 = np.arange(0, 50, 0.01)
+
+    # Evaluation measures
+    sr_eval = ["crps", "me", "lgt", "cov"]
+
+    # Skill scores
+    sr_skill = ["crps"]
+
+    # Network types
+    nn_vec = ["drn", "bqn"]
+
+    # Names of aggregation methods
+    agg_names = {
+        "lp": "Linear Pool",
+        "vi": "Vincentization",
+        "vi-a": "Vincentization (a)",
+        "vi-w": "Vincentization (w)",
+        "vi-aw": "Vincentization (a, w)",
+    }
+    agg_abr = {
+        "lp": r"$LP$",
+        "vi": r"$V_0^=$",
+        "vi-a": r"$V_a^=$",
+        "vi-w": r"$V_0^w$",
+        "vi-aw": r"$V_a^w$",
+    }
+
+    # Aggregation methods
+    agg_meths = list(agg_names.keys())
+
+    # Methods with coefficient estimation
+    coeff_meths = ["vi-a", "vi-w", "vi-aw"]
+
+    # Get colors
+    cols = sns.color_palette("Dark2", 8, as_cmap=True)
+    # Colors of aggregation methods
+    agg_col = {
+        "lp": cols.colors[4],  # type: ignore
+        "vi": cols.colors[5],  # type: ignore
+        "vi-a": cols.colors[2],  # type: ignore
+        "vi-w": cols.colors[0],  # type: ignore
+        "vi-aw": cols.colors[3],  # type: ignore
+        "ens": cols.colors[7],  # type: ignore
+        "opt": cols.colors[1],  # type: ignore
+    }
+
+    # Line types of aggregation methods
+    agg_lty = {
+        "lp": "dashed",
+        "vi": "solid",
+        "vi-a": "solid",
+        "vi-w": "solid",
+        "vi-aw": "solid",
+        "ens": "dashdot",
+        "opt": "dashdot",
+    }
+
+    ### Call plot functions ###
+
     # plot_example_aggregation()
 
     plot_panel_model()
