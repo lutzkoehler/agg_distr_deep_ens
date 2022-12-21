@@ -1,6 +1,7 @@
 ## Simulation study: Script 3
 # Scores of deep ensembles and aggregated forecasts
 
+import json
 import os
 import pickle
 from time import time_ns
@@ -12,39 +13,60 @@ from fn_eval import fn_cover
 
 
 def main():
+    ### Get Config ###
+    with open("src/config.json", "rb") as f:
+        CONFIG = json.load(f)
+
     # Take time
     start_time = time_ns()
 
     ### Settings ###
     # Path of simulated data
-    data_sim_path = os.path.join("data", "ss_data")
+    data_sim_path = os.path.join(
+        CONFIG["PATHS"]["DATA_DIR"], CONFIG["PATHS"]["SIM_DATA"]
+    )
 
     # Path of deep ensemble forecasts
-    data_ens_path = os.path.join("data", "model")
+    data_ens_path = os.path.join(
+        CONFIG["PATHS"]["DATA_DIR"],
+        CONFIG["ENS_METHOD"],
+        CONFIG["PATHS"]["ENSEMBLE_F"],
+    )
 
     # Path of aggregated forecasts
-    data_agg_path = os.path.join("data", "agg")
+    data_agg_path = os.path.join(
+        CONFIG["PATHS"]["DATA_DIR"],
+        CONFIG["ENS_METHOD"],
+        CONFIG["PATHS"]["AGG_F"],
+    )
 
     # Path of results
-    data_out_path = "data"
+    data_out_path = os.path.join(
+        CONFIG["PATHS"]["DATA_DIR"],
+        CONFIG["ENS_METHOD"],
+    )
 
     ### Initialize ###
     # Models considered
-    # scenario_vec = range(1, 7, 1)
-    scenario_vec = [1, 4]
+    scenario_vec = CONFIG["PARAMS"]["SCENARIO_VEC"]
 
     # Number of simulations
-    # n_sim = 50
-    n_sim = 10
-
-    # Ensemble sizes to be combined
-    n_ens_vec = np.arange(start=2, stop=12, step=2)
+    n_sim = CONFIG["PARAMS"]["N_SIM"]
 
     # (Maximum) number of network ensembles
-    n_rep = np.max(n_ens_vec)
+    n_rep = CONFIG["PARAMS"]["N_ENS"]
+
+    # Ensemble sizes to be combined
+    if n_rep > 1:
+        step_size = 2
+        n_ens_vec = np.arange(
+            start=step_size, stop=n_rep + step_size, step=step_size
+        )
+    else:
+        n_ens_vec = [0]
 
     # Network types
-    nn_vec = ["drn", "bqn"]  # For now without "hen"
+    nn_vec = CONFIG["PARAMS"]["NN_VEC"]
 
     # Aggregation methods
     # lp -> Linear pool
@@ -187,7 +209,6 @@ def main():
                         # Read out set sizes
                         new_row[temp] = temp_dict[temp]
 
-                    # TODO: Check if correct set gets dropped
                     # Cut validation data from scores
                     pred_nn["scores"] = pred_nn["scores"].drop(
                         range(pred_nn["n_valid"])

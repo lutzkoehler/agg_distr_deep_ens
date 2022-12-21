@@ -1,18 +1,20 @@
 ## Simulation study: Script 2
 # Aggregation of deep ensembles
 
+# import concurrent.futures
+import json
 import os
 import pickle
-from itertools import product
 from functools import partial
+from itertools import product
+
+# from multiprocessing.pool import Pool
 from time import time_ns
 
 import numpy as np
 import pandas as pd
 import scipy.stats as ss
-
-# from joblib import Parallel, delayed
-from multiprocessing.pool import Pool
+from joblib import Parallel, delayed
 from rpy2.robjects import default_converter, numpy2ri, vectors
 from rpy2.robjects.conversion import localconverter
 from rpy2.robjects.packages import importr
@@ -151,7 +153,7 @@ def fn_mc(
     """
     ### Initialization ###
     # Create pool for parallel processing
-    current_pool = Pool()
+    # current_pool = Pool(processes=kwargs["num_cores"])
 
     # Initialize rpy elements for all scoring functions
     rpy_elements = {
@@ -393,13 +395,26 @@ def fn_mc(
 
             # Simulate ensemble for mixture
             pred_agg["f"] = np.asarray(
-                current_pool.map(
-                    func=partial(
-                        fn_apply_bqn, **dict(kwargs, n_ens=n_ens, f_ls=f_ls)
-                    ),
-                    iterable=range(len(y_test)),
+                list(
+                    map(
+                        partial(
+                            fn_apply_bqn,
+                            **dict(kwargs, n_ens=n_ens, f_ls=f_ls),
+                        ),
+                        range(len(y_test)),
+                    )
                 )
             )
+            # with concurrent.futures.ThreadPoolExecutor() as executor:
+            #     pred_agg["f"] = np.asarray(
+            #         executor.map(
+            #             partial(
+            #                 fn_apply_bqn,
+            #                 **dict(kwargs, n_ens=n_ens, f_ls=f_ls),
+            #             ),
+            #             range(len(y_test)),
+            #         )
+            #     )
 
             # Calculate evaluation measure of simulated ensemble (mixture)
             pred_agg["scores"] = fn_scores_ens(
@@ -601,20 +616,31 @@ def fn_mc(
 
 
 def main():
+    ### Get Config ###
+    with open("src/config.json", "rb") as f:
+        CONFIG = json.load(f)
+
     ### Settings ###
     # Path of deep ensemble forecasts
-    data_in_path = os.path.join("data", "model")
+    data_in_path = os.path.join(
+        CONFIG["PATHS"]["DATA_DIR"],
+        CONFIG["ENS_METHOD"],
+        CONFIG["PATHS"]["ENSEMBLE_F"],
+    )
 
     # Path of aggregated forecasts
-    data_out_path = os.path.join("data", "agg")
+    data_out_path = os.path.join(
+        CONFIG["PATHS"]["DATA_DIR"],
+        CONFIG["ENS_METHOD"],
+        CONFIG["PATHS"]["AGG_F"],
+    )
 
     ### Initialize ###
     # Cores to use
-    num_cores = 7
+    num_cores = CONFIG["NUM_CORES"]
 
     # Network variantes
-    nn_vec = ["drn", "bqn"]  # For now without "hen"
-    # nn_vec = ["bqn"]
+    nn_vec = CONFIG["PARAMS"]["NN_VEC"]
 
     # Aggregation methods
     # lp -> Linear pool
@@ -622,27 +648,32 @@ def main():
     # vi-w -> Vincentization with weight estimation
     # vi-a -> Vincentization with intercept estimation
     # vi-aw -> Vincentization with weight and intercept estimation
-    agg_meths_ls = {
-        "drn": ["lp", "vi", "vi-w", "vi-a", "vi-aw"],
-        "bqn": ["lp", "vi", "vi-w", "vi-a", "vi-aw"],
-        # "drn": ["lp"],
-        # "bqn": ["lp"],
-    }
+    agg_meths_ls = CONFIG["PARAMS"]["AGG_METHS_LS"]
+    # agg_meths_ls = {
+    #     "drn": ["lp", "vi", "vi-w", "vi-a", "vi-aw"],
+    #     "bqn": ["lp", "vi", "vi-w", "vi-a", "vi-aw"],
+    #     # "drn": ["lp"],
+    #     # "bqn": ["lp"],
+    # }
 
     # Models considered
-    # scenario_vec = range(1, 7, 1)
-    scenario_vec = [1, 4]
+    scenario_vec = CONFIG["PARAMS"]["SCENARIO_VEC"]
 
     # Number of simulations
-    # n_sim = 50
-    n_sim = 10
+    n_sim = CONFIG["PARAMS"]["N_SIM"]
+
+    # Size of network ensembles
+    n_ens = CONFIG["PARAMS"]["N_ENS"]
 
     # Ensemble sizes to be combined
-    n_ens_vec = np.arange(start=2, stop=12, step=2)
+    step_size = 2
+    n_ens_vec = np.arange(
+        start=step_size, stop=n_ens + step_size, step=step_size
+    )
 
     # Size of LP mixture samples
     # n_lp_samples = 100
-    n_lp_samples = 1000  # 1000 solves problem of relatively low LP CRPSS
+    n_lp_samples = 1_000  # 1000 solves problem of relatively low LP CRPSS
 
     # Size of BQN quantile samples
     n_q_samples = 100
@@ -675,24 +706,8 @@ def main():
 
     ### Run sequential ###
     print(grid_par.shape[0])
-    for _, row in grid_par.iterrows():
-        fn_mc(
-            i_nn=row["nn_vec"],
-            i_scenario=row["scenario_vec"],
-            n_ens=row["n_ens_vec"],
-            i_sim=row["n_sim"],
-            q_levels=q_levels,
-            nn_vec=nn_vec,
-            agg_meths_ls=agg_meths_ls,
-            data_in_path=data_in_path,
-            data_out_path=data_out_path,
-            n_lp_samples=n_lp_samples,
-            n_q_samples=n_q_samples,
-        )
-
-    ### Run parallel ###
-    # Parallel(n_jobs=num_cores, backend="multiprocessing")(
-    #     delayed(fn_mc)(
+    # for _, row in grid_par.iterrows():
+    #     fn_mc(
     #         i_nn=row["nn_vec"],
     #         i_scenario=row["scenario_vec"],
     #         n_ens=row["n_ens_vec"],
@@ -704,9 +719,27 @@ def main():
     #         data_out_path=data_out_path,
     #         n_lp_samples=n_lp_samples,
     #         n_q_samples=n_q_samples,
+    #         num_cores=num_cores,
     #     )
-    #     for _, row in grid_par.iterrows()
-    # )
+
+    ### Run parallel ###
+    Parallel(n_jobs=num_cores, backend="multiprocessing")(
+        delayed(fn_mc)(
+            i_nn=row["nn_vec"],
+            i_scenario=row["scenario_vec"],
+            n_ens=row["n_ens_vec"],
+            i_sim=row["n_sim"],
+            q_levels=q_levels,
+            nn_vec=nn_vec,
+            agg_meths_ls=agg_meths_ls,
+            data_in_path=data_in_path,
+            data_out_path=data_out_path,
+            n_lp_samples=n_lp_samples,
+            n_q_samples=n_q_samples,
+            num_cores=int(num_cores / 2),
+        )
+        for _, row in grid_par.iterrows()
+    )
 
     # Take time
     total_end_time = time_ns()

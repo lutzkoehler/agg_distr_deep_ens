@@ -5,6 +5,7 @@ import keras.backend as K
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
+from ddrop.layers import DropConnect
 from nptyping import Float, NDArray
 from tensorflow.keras import Model  # type: ignore
 from tensorflow.keras.callbacks import EarlyStopping  # type: ignore
@@ -12,19 +13,21 @@ from tensorflow.keras.layers import Dense  # type: ignore
 from tensorflow.keras.layers import Concatenate, Dropout, Input  # type: ignore
 from tensorflow.keras.optimizers import Adam  # type: ignore
 
-from BaseModel import BaseModel
+from BaseModel import BaseModel, DropoutBaseModel
 from fn_eval import fn_scores_distr
 
 
 class DRNBaseModel(BaseModel):
     def __init__(
         self,
+        nn_deep_arch: list[Any],
         n_ens: int,
         n_cores: int,
         rpy_elements: dict[str, Any],
         dtype: str = "float32",
         **kwargs
     ) -> None:
+        self.deep_arch = nn_deep_arch
         self.n_ens = n_ens
         self.n_cores = n_cores
         self.rpy_elements = rpy_elements
@@ -157,7 +160,9 @@ class DRNBaseModel(BaseModel):
         start_tm = time.time_ns()
 
         # Predict parameters of distributional forecasts (on scaled data)
-        self.f: NDArray[Any, Float] = self.model.predict(X_pred)
+        self.f: NDArray[Any, Float] = self.model.predict(
+            X_pred, verbose=self.hpar["nn_verbose"]
+        )
 
         # Take time
         end_tm = time.time_ns()
@@ -225,21 +230,45 @@ class DRNRandInitModel(DRNBaseModel):
         input = Input(shape=input_length, name="input", dtype=self.dtype)
 
         # Hidden layers
-        hidden_1 = Dense(
-            units=self.hpar["lay1"],
-            activation=self.hpar["actv"],
-            dtype=self.dtype,
-        )(input)
-        hidden_2 = Dense(
-            units=self.hpar["lay1"] / 2,
-            activation=self.hpar["actv"],
-            dtype=self.dtype,
-        )(hidden_1)
+        for idx, layer_info in enumerate(self.deep_arch):
+            # Get layer class
+            if layer_info[0] == "Dense":
+                layer_class = Dense
+            else:
+                layer_class = Dense
+            # Build layers
+            if idx == 0:
+                hidden_layer = layer_class(
+                    units=layer_info[1],
+                    activation=self.hpar["actv"],
+                    dtype=self.dtype,
+                )(input)
+            else:
+                hidden_layer = layer_class(
+                    units=layer_info[1],
+                    activation=self.hpar["actv"],
+                    dtype=self.dtype,
+                )(
+                    hidden_layer  # type: ignore
+                )
+
+        # hidden_1 = Dense(
+        #     units=self.hpar["lay1"],
+        #     activation=self.hpar["actv"],
+        #     dtype=self.dtype,
+        # )(input)
+        # hidden_2 = Dense(
+        #     units=self.hpar["lay1"] / 2,
+        #     activation=self.hpar["actv"],
+        #     dtype=self.dtype,
+        # )(hidden_1)
 
         # Different activation functions for output
-        loc_out = Dense(units=1, dtype=self.dtype)(hidden_2)
+        loc_out = Dense(units=1, dtype=self.dtype)(
+            hidden_layer  # type: ignore
+        )
         scale_out = Dense(units=1, activation="softplus", dtype=self.dtype)(
-            hidden_2
+            hidden_layer  # type: ignore
         )
 
         # Concatenate output
@@ -252,7 +281,7 @@ class DRNRandInitModel(DRNBaseModel):
         return model
 
 
-class DRNDropoutModel(DRNBaseModel):
+class DRNDropoutModel(DRNBaseModel, DropoutBaseModel):
     def _get_architecture(
         self, input_length: int, training: bool = False
     ) -> Model:
@@ -296,36 +325,134 @@ class DRNDropoutModel(DRNBaseModel):
         # Input
         input = Input(shape=(input_length,), name="input", dtype=self.dtype)
         # Input dropout
-        input_d = Dropout(
-            rate=self.hpar["p_dropout_input"], noise_shape=(input_length,)
-        )(input, training=training)
+        # input_d = Dropout(
+        #     rate=self.hpar["p_dropout_input"], noise_shape=(input_length,)
+        # )(input, training=training)
 
-        # Hidden layer 1
-        n_units_1 = int(self.hpar["lay1"] / (1 - p_dropout))
-        hidden_1 = Dense(
-            units=n_units_1,
-            activation=self.hpar["actv"],
-            dtype=self.dtype,
-        )(input_d)
-        hidden_1_d = Dropout(rate=p_dropout, noise_shape=(n_units_1,))(
-            hidden_1, training=training
-        )
+        # Hidden layers
+        for idx, layer_info in enumerate(self.deep_arch):
+            # Get layer class
+            if layer_info[0] == "Dense":
+                layer_class = Dense
+            else:
+                layer_class = Dense
+            # Calculate units
+            n_units = int(layer_info[1] / (1 - p_dropout))
+            # Build layers
+            if idx == 0:
+                hidden_layer = layer_class(
+                    units=n_units,
+                    activation=self.hpar["actv"],
+                    dtype=self.dtype,
+                )(input)
+                hidden_d_layer = Dropout(
+                    rate=p_dropout, noise_shape=(n_units,)
+                )(hidden_layer, training=training)
+            else:
+                hidden_layer = layer_class(
+                    units=n_units,
+                    activation=self.hpar["actv"],
+                    dtype=self.dtype,
+                )(
+                    hidden_d_layer  # type: ignore
+                )
+                hidden_d_layer = Dropout(
+                    rate=p_dropout, noise_shape=(n_units,)
+                )(hidden_layer, training=training)
 
-        # Hidden layer 2
-        n_units_2 = int(self.hpar["lay1"] / ((1 - p_dropout) * 2))
-        hidden_2 = Dense(
-            units=n_units_2,
-            activation=self.hpar["actv"],
-            dtype=self.dtype,
-        )(hidden_1_d)
-        hidden_2_d = Dropout(rate=p_dropout, noise_shape=(n_units_2,))(
-            hidden_2, training=training
-        )
+        # # Hidden layer 1
+        # n_units_1 = int(self.hpar["lay1"] / (1 - p_dropout))
+        # hidden_1 = Dense(
+        #     units=n_units_1,
+        #     activation=self.hpar["actv"],
+        #     dtype=self.dtype,
+        # )(input)
+        # hidden_1_d = Dropout(rate=p_dropout, noise_shape=(n_units_1,))(
+        #     hidden_1, training=training
+        # )
+
+        # # Hidden layer 2
+        # n_units_2 = int(self.hpar["lay1"] / ((1 - p_dropout) * 2))
+        # hidden_2 = Dense(
+        #     units=n_units_2,
+        #     activation=self.hpar["actv"],
+        #     dtype=self.dtype,
+        # )(hidden_1_d)
+        # hidden_2_d = Dropout(rate=p_dropout, noise_shape=(n_units_2,))(
+        #     hidden_2, training=training
+        # )
 
         # Different activation functions for output
-        loc_out = Dense(units=1, dtype=self.dtype)(hidden_2_d)
+        loc_out = Dense(units=1, dtype=self.dtype)(
+            hidden_d_layer  # type: ignore
+        )
         scale_out = Dense(units=1, activation="softplus", dtype=self.dtype)(
-            hidden_2_d
+            hidden_d_layer  # type: ignore
+        )
+
+        # Concatenate output
+        output = Concatenate()([loc_out, scale_out])
+
+        # Define model
+        model = Model(inputs=input, outputs=output)
+
+        # print(self.deep_arch)
+        # Return model
+        return model
+
+
+class DRNDropconnectModel(DRNBaseModel):
+    def _get_architecture(self, input_length: int, training: bool) -> Model:
+        tf.keras.backend.set_floatx(self.dtype)
+
+        # Extract params
+        p_dropout = self.hpar["p_dropout"]
+
+        ### Build network ###
+        # Input
+        input = Input(shape=(input_length,), name="input", dtype=self.dtype)
+        # Input dropout
+        # input_d = Dropout(
+        #     rate=self.hpar["p_dropout_input"], noise_shape=(input_length,)
+        # )(input, training=training)
+
+        # Hidden layers
+        for idx, layer_info in enumerate(self.deep_arch):
+            # Get layer class
+            if layer_info[0] == "Dense":
+                layer_class = Dense
+            else:
+                layer_class = Dense
+            # Calculate units
+            # n_units = int(layer_info[1] / (1 - p_dropout))
+            # Build layers
+            if idx == 0:
+                hidden_layer = DropConnect(
+                    layer_class(
+                        units=layer_info[1],
+                        activation=self.hpar["actv"],
+                        dtype=self.dtype,
+                    ),
+                    prob=p_dropout,
+                )(input, training=training)
+            else:
+                hidden_layer = DropConnect(
+                    layer_class(
+                        units=layer_info[1],
+                        activation=self.hpar["actv"],
+                        dtype=self.dtype,
+                    ),
+                    prob=p_dropout,
+                )(
+                    hidden_layer, training=training  # type: ignore
+                )
+
+        # Different activation functions for output
+        loc_out = Dense(units=1, dtype=self.dtype)(
+            hidden_layer  # type: ignore
+        )
+        scale_out = Dense(units=1, activation="softplus", dtype=self.dtype)(
+            hidden_layer  # type: ignore
         )
 
         # Concatenate output
