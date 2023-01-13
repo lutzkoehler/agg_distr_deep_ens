@@ -5,14 +5,15 @@ import keras.backend as K
 import numpy as np
 import scipy.stats as ss
 import tensorflow as tf
+import tensorflow_probability as tfp
 from nptyping import Float, NDArray
-from tensorflow.keras import Model  # type: ignore
+from tensorflow.keras import Model, Sequential  # type: ignore
 from tensorflow.keras.callbacks import EarlyStopping  # type: ignore
 from tensorflow.keras.layers import Dense  # type: ignore
 from tensorflow.keras.layers import Concatenate, Dropout, Input  # type: ignore
 from tensorflow.keras.optimizers import Adam  # type: ignore
 
-from BaseModel import BaseModel, DropoutBaseModel
+from BaseModel import BaseModel
 from fn_eval import bern_quants, fn_scores_ens
 
 
@@ -27,11 +28,9 @@ class BQNBaseModel(BaseModel):
         q_levels: NDArray[Any, Float] | None = None,
         **kwargs
     ) -> None:
-        self.deep_arch = nn_deep_arch
-        self.n_ens = n_ens
-        self.n_cores = n_cores
-        self.rpy_elements = rpy_elements
-        self.dtype = dtype
+        super().__init__(
+            nn_deep_arch, n_ens, n_cores, rpy_elements, dtype, **kwargs
+        )
         # If not given use equidistant quantiles (multiple of ensemble
         # coverage, incl. median)
         if q_levels is None:
@@ -50,12 +49,9 @@ class BQNBaseModel(BaseModel):
             "actv": "softplus",
             "actv_out": "softplus",
             "nn_verbose": 0,
-            "p_dropout": 0.5,
+            "p_dropout": 0.1,
             "p_dropout_input": 0.2,
         }
-        self.training = False
-        if "training" in kwargs.keys():
-            self.training = kwargs["training"]
 
     def _build(self, input_length: int) -> Model:
         # Calculate equidistant quantile levels for loss function
@@ -341,7 +337,7 @@ class BQNRandInitModel(BQNBaseModel):
         return model
 
 
-class BQNDropoutModel(BQNBaseModel, DropoutBaseModel):
+class BQNDropoutModel(BQNBaseModel):
     def _get_architecture(
         self, input_length: int, training: bool = False
     ) -> Model:
@@ -460,3 +456,173 @@ class BQNDropoutModel(BQNBaseModel, DropoutBaseModel):
 
         # Return model
         return model
+
+
+class BQNBayesianModel(BQNBaseModel):
+    def _get_architecture(self, input_length: int, training: bool) -> Model:
+        tf.keras.backend.set_floatx(self.dtype)
+
+        ### Build network ###
+        # Input
+        input = Input(shape=(input_length,), name="input", dtype=self.dtype)
+
+        # Get prior and posterior
+        prior_fn = self._get_prior()
+        posterior_fn = self._get_posterior()
+
+        # Hidden layers
+        for idx, layer_info in enumerate(self.deep_arch):
+            # Get layer class
+            if layer_info[0] == "Dense":
+                layer_class = tfp.layers.DenseVariational
+            else:
+                layer_class = tfp.layers.DenseVariational
+            # Build layers
+            if idx == 0:
+                hidden_layer = layer_class(
+                    units=layer_info[1],
+                    make_prior_fn=prior_fn,
+                    make_posterior_fn=posterior_fn,
+                    kl_weight=1 / 5000,
+                    activation=self.hpar["actv"],
+                    dtype=self.dtype,
+                )(input, training=training)
+            else:
+                hidden_layer = layer_class(
+                    units=layer_info[1],
+                    make_prior_fn=prior_fn,
+                    make_posterior_fn=posterior_fn,
+                    kl_weight=1 / 5000,
+                    activation=self.hpar["actv"],
+                    dtype=self.dtype,
+                )(
+                    hidden_layer, training=training  # type: ignore
+                )
+
+        # Different activation functions for output
+        alpha0_out = tfp.layers.DenseVariational(
+            units=1,
+            make_prior_fn=prior_fn,
+            make_posterior_fn=posterior_fn,
+            kl_weight=1 / 5000,
+            dtype=self.dtype,
+        )(
+            hidden_layer  # type: ignore
+        )
+        alphai_out = tfp.layers.DenseVariational(
+            units=self.hpar["p_degree"],
+            make_prior_fn=prior_fn,
+            make_posterior_fn=posterior_fn,
+            kl_weight=1 / 5000,
+            activation="softplus",
+            dtype=self.dtype,
+        )(
+            hidden_layer  # type: ignore
+        )
+
+        # Concatenate output
+        output = Concatenate()([alpha0_out, alphai_out])
+
+        # Define model
+        model = Model(inputs=input, outputs=output)
+
+        # Return model
+        return model
+
+    def _get_prior(self):
+        """Returns the prior weight distribution
+
+        e.g. Normal of mean=0 and sd=1
+        Prior might be trainable or not
+
+        Returns
+        -------
+        function
+            prior function
+        """
+
+        def prior_standard_normal(kernel_size, bias_size, dtype=None):
+            n = kernel_size + bias_size
+            prior_model = Sequential(
+                [
+                    tfp.layers.DistributionLambda(
+                        lambda t: tfp.distributions.MultivariateNormalDiag(
+                            loc=tf.zeros(n), scale_diag=tf.ones(n)
+                        )
+                    )
+                ]
+            )
+            return prior_model
+
+        def prior_uniform(kernel_size, bias_size, dtype=None):
+            n = kernel_size + bias_size
+            prior_model = Sequential(
+                [
+                    tfp.layers.DistributionLambda(
+                        lambda t: tfp.distributions.Independent(
+                            tfp.distributions.Uniform(
+                                low=tf.ones(n) * -3, high=tf.ones(n) * 3
+                            ),
+                            reinterpreted_batch_ndims=1,
+                        )
+                    )
+                ]
+            )
+            return prior_model
+
+        def prior_laplace(kernel_size, bias_size, dtype=None):
+            n = kernel_size + bias_size
+            prior_model = Sequential(
+                [
+                    tfp.layers.DistributionLambda(
+                        lambda t: tfp.distributions.Independent(
+                            tfp.distributions.Laplace(
+                                loc=tf.zeros(n), scale=tf.ones(n)
+                            ),
+                            reinterpreted_batch_ndims=1,
+                        )
+                    )
+                ]
+            )
+            return prior_model
+
+        return prior_uniform
+
+    def _get_posterior(self):
+        """Returns the posterior weight distribution
+
+        e.g. multivariate Gaussian
+        Depending on the distribution the learnable parameters vary
+
+        Returns
+        -------
+        function
+            posterior function
+        """
+
+        def posterior_mean_field(kernel_size, bias_size, dtype=None):
+            n = kernel_size + bias_size
+            c = np.log(np.expm1(1.0))
+            posterior_model = Sequential(
+                [
+                    # tfp.layers.VariableLayer(
+                    #     tfp.layers.MultivariateNormalTriL.params_size(n),
+                    #     dtype=dtype,
+                    # ),
+                    # tfp.layers.MultivariateNormalTriL(n)
+                    tfp.layers.VariableLayer(2 * n),
+                    tfp.layers.DistributionLambda(
+                        lambda t: tfp.distributions.Independent(
+                            tfp.distributions.Normal(
+                                loc=t[..., :n],
+                                scale=1e-5
+                                + 0.001 * tf.nn.softplus(c + t[..., n:]),
+                            ),
+                            reinterpreted_batch_ndims=1,
+                        )
+                    ),
+                ]
+            )
+            return posterior_model
+
+        return posterior_mean_field
