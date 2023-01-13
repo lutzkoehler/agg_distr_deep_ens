@@ -704,42 +704,46 @@ def main():
     # Take time
     total_start_time = time_ns()
 
-    ### Run sequential ###
-    print(grid_par.shape[0])
-    # for _, row in grid_par.iterrows():
-    #     fn_mc(
-    #         i_nn=row["nn_vec"],
-    #         i_scenario=row["scenario_vec"],
-    #         n_ens=row["n_ens_vec"],
-    #         i_sim=row["n_sim"],
-    #         q_levels=q_levels,
-    #         nn_vec=nn_vec,
-    #         agg_meths_ls=agg_meths_ls,
-    #         data_in_path=data_in_path,
-    #         data_out_path=data_out_path,
-    #         n_lp_samples=n_lp_samples,
-    #         n_q_samples=n_q_samples,
-    #         num_cores=num_cores,
-    #     )
+    # Run sequential or run parallel
+    run_parallel = False
 
-    ### Run parallel ###
-    Parallel(n_jobs=num_cores, backend="multiprocessing")(
-        delayed(fn_mc)(
-            i_nn=row["nn_vec"],
-            i_scenario=row["scenario_vec"],
-            n_ens=row["n_ens_vec"],
-            i_sim=row["n_sim"],
-            q_levels=q_levels,
-            nn_vec=nn_vec,
-            agg_meths_ls=agg_meths_ls,
-            data_in_path=data_in_path,
-            data_out_path=data_out_path,
-            n_lp_samples=n_lp_samples,
-            n_q_samples=n_q_samples,
-            num_cores=int(num_cores / 2),
+    print(grid_par.shape[0])
+    if run_parallel:
+        ### Run parallel ###
+        Parallel(n_jobs=num_cores, backend="multiprocessing")(
+            delayed(fn_mc)(
+                i_nn=row["nn_vec"],
+                i_scenario=row["scenario_vec"],
+                n_ens=row["n_ens_vec"],
+                i_sim=row["n_sim"],
+                q_levels=q_levels,
+                nn_vec=nn_vec,
+                agg_meths_ls=agg_meths_ls,
+                data_in_path=data_in_path,
+                data_out_path=data_out_path,
+                n_lp_samples=n_lp_samples,
+                n_q_samples=n_q_samples,
+                num_cores=int(num_cores / 2),
+            )
+            for _, row in grid_par.iterrows()
         )
-        for _, row in grid_par.iterrows()
-    )
+    else:
+        ### Run sequential ###
+        for _, row in grid_par.iterrows():
+            fn_mc(
+                i_nn=row["nn_vec"],
+                i_scenario=row["scenario_vec"],
+                n_ens=row["n_ens_vec"],
+                i_sim=row["n_sim"],
+                q_levels=q_levels,
+                nn_vec=nn_vec,
+                agg_meths_ls=agg_meths_ls,
+                data_in_path=data_in_path,
+                data_out_path=data_out_path,
+                n_lp_samples=n_lp_samples,
+                n_q_samples=n_q_samples,
+                num_cores=num_cores,
+            )
 
     # Take time
     total_end_time = time_ns()

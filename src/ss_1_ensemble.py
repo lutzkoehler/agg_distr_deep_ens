@@ -18,17 +18,24 @@ from sklearn.utils import resample
 
 import BQNModels  # noqa: F401
 import DRNModels  # noqa: F401
-from BaseModel import BaseModel, DropoutBaseModel
+from BaseModel import BaseModel
 from fn_basic import fn_upit
 
 METHOD_CLASS_CONFIG = {
-    "standard_dropout": "Dropout",
     "mc_dropout": "Dropout",
+    "dropconnect": "DropConnect",
+    "variational_dropout": "VariationalDropout",
+    "bayesian": "Bayesian",
     "rand_init": "RandInit",
     "bagging": "RandInit",
 }
 METHOD_NUM_MODELS = {
-    "single_model": ["mc_dropout", "standard_dropout"],
+    "single_model": [
+        "mc_dropout",
+        "dropconnect",
+        "variational_dropout",
+        "bayesian",
+    ],
     "multi_model": ["rand_init", "bagging"],
 }
 
@@ -124,12 +131,11 @@ def run_ensemble_single_model(
             X_valid=X_valid,
             y_valid=y_valid,
         )
-
-        # Update weights of standard dropout to p_dropout * weights
-        if (ens_method == "standard_dropout") and isinstance(
-            model, DropoutBaseModel
-        ):
-            model.scale_weights()
+        print(
+            f"{temp_nn.upper()}: Finished training of",
+            f"{temp_nn}_scen_{i_scenario}_sim_{i_sim}_ens_0.pkl",
+            f"- {(model.runtime_est)/1e+9}s",
+        )
 
         # For-Loop over ensemble member
         for i_ens in range(n_ens):
@@ -161,9 +167,6 @@ def run_ensemble_single_model(
             # Get results
             pred_nn = model.get_results(y_test=np.hstack((y_valid, y_test)))
 
-            if np.any(np.isnan(pred_nn["f"])):
-                print("test")
-
             # Transform ranks
             if "rank" in pred_nn["scores"].keys():
                 pred_nn["scores"]["pit"] = fn_upit(
@@ -183,35 +186,17 @@ def run_ensemble_single_model(
             )
             temp_data_out_path = os.path.join(data_out_path, filename)
 
+            # Check for NaNs in predictions
             if np.any(np.isnan(pred_nn["f"])):
-                print(temp_data_out_path)
+                print(f"NaNs predicted in {temp_data_out_path}")
 
             with open(temp_data_out_path, "wb") as f:
                 pickle.dump([pred_nn, y_valid, y_test], f)
 
             print(
-                f"{temp_nn.upper()}: Finished training of {filename}"
+                f"{temp_nn.upper()}: Finished prediction of {filename}"
                 f" - {(end_time - start_time)/1e+9}s",
             )
-
-            if ens_method == "standard_dropout":
-                i_ens += 1
-                # Store predictions n_ens times
-                while i_ens < n_ens:
-                    filename = os.path.join(
-                        f"{temp_nn}_scen_{i_scenario}_sim_{i_sim}_ens_{i_ens}.pkl",  # noqa: E501
-                    )
-                    temp_data_out_path = os.path.join(data_out_path, filename)
-                    with open(temp_data_out_path, "wb") as f:
-                        pickle.dump([pred_nn, y_valid, y_test], f)
-
-                    print(
-                        f"{temp_nn.upper()}: Finished training of {filename}"
-                        f" - {(end_time - start_time)/1e+9}s",
-                    )
-                    i_ens += 1
-                # Finish for loop
-                break
 
         del model
 
@@ -469,41 +454,49 @@ def main():
     # Get number of cores for parallelization
     num_cores = CONFIG["NUM_CORES"]
 
+    # Train a single model for each ensemble member
     if ens_method in METHOD_NUM_MODELS["single_model"]:
         run_ensemble = run_ensemble_single_model
+    # Or use the same model to predict each ensemble member
     else:
         run_ensemble = run_ensemble_multi_model
 
-    ### Run sequential ###
-    # for i_scenario in scenario_vec:
-    #     for i_sim in range(n_sim):
-    #         run_ensemble(
-    #             i_scenario,
-    #             i_sim,
-    #             n_ens,
-    #             nn_vec,
-    #             data_in_path,
-    #             data_out_path,
-    #             num_cores,
-    #             ens_method,
-    #             nn_deep_arch=nn_deep_arch,
-    #         )
+    # Run sequential or run parallel
+    run_parallel = False
 
-    ### Run parallel ###
-    Parallel(n_jobs=7, backend="multiprocessing")(
-        delayed(run_ensemble)(
-            i_scenario=i_scenario,
-            i_sim=i_sim,
-            n_ens=n_ens,
-            nn_vec=nn_vec,
-            data_in_path=data_in_path,
-            data_out_path=data_out_path,
-            num_cores=num_cores,
-            ens_method=ens_method,
-            nn_deep_arch=nn_deep_arch,
+    if run_parallel:
+        ### Run parallel ###
+        Parallel(n_jobs=7, backend="multiprocessing")(
+            delayed(run_ensemble)(
+                i_scenario=i_scenario,
+                i_sim=i_sim,
+                n_ens=n_ens,
+                nn_vec=nn_vec,
+                data_in_path=data_in_path,
+                data_out_path=data_out_path,
+                num_cores=num_cores,
+                ens_method=ens_method,
+                nn_deep_arch=nn_deep_arch,
+            )
+            for i_scenario, i_sim in itertools.product(
+                scenario_vec, range(n_sim)
+            )
         )
-        for i_scenario, i_sim in itertools.product(scenario_vec, range(n_sim))
-    )
+    else:
+        ### Run sequential ###
+        for i_scenario in scenario_vec:
+            for i_sim in range(n_sim):
+                run_ensemble(
+                    i_scenario,
+                    i_sim,
+                    n_ens,
+                    nn_vec,
+                    data_in_path,
+                    data_out_path,
+                    num_cores,
+                    ens_method,
+                    nn_deep_arch=nn_deep_arch,
+                )
 
 
 if __name__ == "__main__":
