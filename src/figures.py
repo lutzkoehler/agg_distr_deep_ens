@@ -694,6 +694,7 @@ def plot_ensemble_members():
 
                     new_row = {
                         "model": i_scenario,
+                        "nn": temp_nn,
                         "n_sim": i_sim,
                         "n_ens": i_ens,
                         "idx": idx,
@@ -739,6 +740,7 @@ def plot_ensemble_members():
 
                         new_row = {
                             "model": i_scenario,
+                            "nn": temp_nn,
                             "n_sim": i_sim,
                             "n_ens": i_ens,
                             "idx": idx,
@@ -759,13 +761,12 @@ def plot_ensemble_members():
                                     q=q_levels, loc=mu, scale=std
                                 )
                                 new_row["quantiles"] = quantiles
-                        # elif temp_nn == "bqn":
-                        #     print(np.mean(pred_nn["f"][i_test, :], axis=0))
-                        #     new_row["quantiles"] = np.mean(
-                        #         pred_nn["f"][i_test, :], axis=0
-                        #     )
-                        # elif temp_nn == "hen":
-                        #     pass
+                        elif temp_nn == "bqn":
+                            new_row["quantiles"] = np.mean(
+                                pred_agg["f"], axis=0
+                            )
+                        elif temp_nn == "hen":
+                            new_row["nn"] = "hen"
 
                         df_plot = pd.concat(
                             [df_plot, pd.DataFrame([new_row], index=[0])],
@@ -810,7 +811,9 @@ def plot_ensemble_members():
                 palette="Dark2",
             )
 
-            df_plot_temp = df_plot[df_plot["agg"] == 0]
+            df_plot_temp = df_plot[
+                (df_plot["nn"] == temp_nn) & (df_plot["agg"] == 0)
+            ]
             sns.lineplot(
                 data=df_plot_temp.explode(["quantiles", "x"]),  # type: ignore
                 x="x",
@@ -821,7 +824,9 @@ def plot_ensemble_members():
             )
 
             df_plot_temp = df_plot[
-                (df_plot["agg"] != 0) & (df_plot["agg"] != "lp")
+                (df_plot["nn"] == temp_nn)
+                & (df_plot["agg"] != 0)
+                & (df_plot["agg"] != "lp")
             ]
             sns.lineplot(
                 data=df_plot_temp.explode(["quantiles", "x"]),  # type: ignore

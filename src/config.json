@@ -1,28 +1,22 @@
 {
-    "ENS_METHOD": "mc_dropout",
+    "ENS_METHOD": "variational_dropout",
     "_available_ENS_METHOD": [
         "bagging",
-        "standard_dropout",
         "mc_dropout",
-        "random_init"
+        "dropconnect",
+        "variational_dropout",
+        "random_init",
+        "bayesian"
     ],
     "NN_DEEP_ARCH": [
         [
             [
                 "Dense",
-                128
-            ],
-            [
-                "Dense",
-                128
-            ],
-            [
-                "Dense",
-                128
-            ],
-            [
-                "Dense",
                 64
+            ],
+            [
+                "Dense",
+                32
             ]
         ]
     ],
@@ -48,11 +42,19 @@
         [
             [
                 "Dense",
-                64
+                128
             ],
             [
                 "Dense",
-                32
+                128
+            ],
+            [
+                "Dense",
+                128
+            ],
+            [
+                "Dense",
+                64
             ]
         ]
     ],
@@ -91,7 +93,7 @@
             ]
         },
         "N_SIM": 10,
-        "N_ENS": 20
+        "N_ENS": 10
     },
     "NUM_CORES": 10
 }
