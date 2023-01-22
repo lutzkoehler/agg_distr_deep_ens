@@ -24,6 +24,7 @@ class BaseModel(ABC):
         self.model: Model
         self.runtime_est = 0
         self.training = False
+        self.p_dropout = None
         if "training" in kwargs.keys():
             self.training = kwargs["training"]
 

@@ -1,11 +1,18 @@
+import copy
 import time
 from typing import Any
 
+import edward2 as ed
 import keras.backend as K
 import numpy as np
 import scipy.stats as ss
 import tensorflow as tf
 import tensorflow_probability as tfp
+from concretedropout.tensorflow import (
+    ConcreteDenseDropout,
+    get_dropout_regularizer,
+    get_weight_regularizer,
+)
 from nptyping import Float, NDArray
 from tensorflow.keras import Model, Sequential  # type: ignore
 from tensorflow.keras.callbacks import EarlyStopping  # type: ignore
@@ -26,7 +33,7 @@ class BQNBaseModel(BaseModel):
         rpy_elements: dict[str, Any],
         dtype: str = "float32",
         q_levels: NDArray[Any, Float] | None = None,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(
             nn_deep_arch, n_ens, n_cores, rpy_elements, dtype, **kwargs
@@ -42,15 +49,16 @@ class BQNBaseModel(BaseModel):
             "p_degree": 12,
             "n_q": 99,
             "lr_adam": 5e-4,  # -1 for Adam-default
-            "n_epochs": 150,
+            "n_epochs": 500,
             "n_patience": 10,
             "n_batch": 64,
             "lay1": 48,
             "actv": "softplus",
             "actv_out": "softplus",
             "nn_verbose": 0,
+            "run_eagerly": False,
             "p_dropout": 0.1,
-            "p_dropout_input": 0.2,
+            "p_dropout_input": 0,
         }
 
     def _build(self, input_length: int) -> Model:
@@ -73,6 +81,32 @@ class BQNBaseModel(BaseModel):
             n=self.hpar["p_degree"],
         )
 
+        # Custom optizimer
+        if self.hpar["lr_adam"] == -1:
+            custom_opt = "adam"
+        else:
+            custom_opt = Adam(learning_rate=self.hpar["lr_adam"])
+
+        ### Build network ###
+        model = self._get_architecture(
+            input_length=input_length, training=self.training
+        )
+
+        # Get custom loss
+        custom_loss = self._get_loss()
+
+        ### Estimation ###
+        # Compile model
+        model.compile(
+            optimizer=custom_opt,
+            loss=custom_loss,
+            run_eagerly=self.hpar["run_eagerly"],
+        )
+
+        # Return model
+        return model
+
+    def _get_loss(self):
         # Quantile loss functions (for neural network)
         def qt_loss(y_true, y_pred):
             """Quantile loss for BQN network
@@ -113,24 +147,7 @@ class BQNBaseModel(BaseModel):
                 K.maximum(e1, e2), axis=1
             )  # max_shape (64,99) - mean_shape (64,)
 
-        # Custom optizimer
-        if self.hpar["lr_adam"] == -1:
-            custom_opt = "adam"
-        else:
-            custom_opt = Adam(learning_rate=self.hpar["lr_adam"])
-
-        ### Build network ###
-        model = self._get_architecture(
-            input_length=input_length, training=self.training
-        )
-
-        ### Estimation ###
-        # Compile model
-        # run_eagerly to help debug (default: False)
-        model.compile(optimizer=custom_opt, loss=qt_loss, run_eagerly=False)
-
-        # Return model
-        return model
+        return qt_loss
 
     def fit(
         self,
@@ -180,6 +197,8 @@ class BQNBaseModel(BaseModel):
 
         # Time needed
         self.runtime_est = end_tm - start_tm
+
+        self._store_params()
 
     def predict(self, X_test: NDArray) -> None:
         # Scale data for prediction
@@ -240,6 +259,9 @@ class BQNBaseModel(BaseModel):
             "runtime_est": self.runtime_est,
             "runtime_pred": self.runtime_pred,
         }
+
+    def _store_params(self):
+        pass
 
 
 class BQNRandInitModel(BQNBaseModel):
@@ -303,17 +325,6 @@ class BQNRandInitModel(BQNBaseModel):
                     hidden_layer  # type: ignore
                 )
 
-        # hidden_1 = Dense(
-        #     units=self.hpar["lay1"],
-        #     activation=self.hpar["actv"],
-        #     dtype=self.dtype,
-        # )(input)
-        # hidden_2 = Dense(
-        #     units=self.hpar["lay1"] / 2,
-        #     activation=self.hpar["actv"],
-        #     dtype=self.dtype,
-        # )(hidden_1)
-
         # Different activation functions for output (alpha_0 and positive
         # increments)
         alpha0_out = Dense(units=1, dtype=self.dtype)(
@@ -338,6 +349,27 @@ class BQNRandInitModel(BQNBaseModel):
 
 
 class BQNDropoutModel(BQNBaseModel):
+    def __init__(
+        self,
+        nn_deep_arch: list[Any],
+        n_ens: int,
+        n_cores: int,
+        rpy_elements: dict[str, Any],
+        dtype: str = "float32",
+        q_levels: NDArray[Any, Float] | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            nn_deep_arch,
+            n_ens,
+            n_cores,
+            rpy_elements,
+            dtype,
+            q_levels,
+            **kwargs,
+        )
+        self.training = True
+
     def _get_architecture(
         self, input_length: int, training: bool = False
     ) -> Model:
@@ -412,28 +444,6 @@ class BQNDropoutModel(BQNBaseModel):
                 hidden_layer_d = Dropout(
                     rate=p_dropout, noise_shape=(n_units,)
                 )(hidden_layer, training=training)
-
-        # # Hidden layer 1
-        # n_units_1 = int(self.hpar["lay1"] / (1 - p_dropout))
-        # hidden_1 = Dense(
-        #     units=n_units_1,
-        #     activation=self.hpar["actv"],
-        #     dtype=self.dtype,
-        # )(input)
-        # hidden_1_d = Dropout(rate=p_dropout, noise_shape=(n_units_1,))(
-        #     hidden_1, training=training
-        # )
-
-        # # Hidden layer 2
-        # n_units_2 = int(self.hpar["lay1"] / ((1 - p_dropout) * 2))
-        # hidden_2 = Dense(
-        #     units=n_units_2,
-        #     activation=self.hpar["actv"],
-        #     dtype=self.dtype,
-        # )(hidden_1_d)
-        # hidden_2_d = Dropout(rate=p_dropout, noise_shape=(n_units_2,))(
-        #     hidden_2, training=training
-        # )
 
         # Different activation functions for output (alpha_0 and positive
         # increments)
@@ -626,3 +636,357 @@ class BQNBayesianModel(BQNBaseModel):
             return posterior_model
 
         return posterior_mean_field
+
+
+class BQNVariationalDropoutModel(BQNBaseModel):
+    def _get_architecture(self, input_length: int, training: bool) -> Model:
+        tf.keras.backend.set_floatx(self.dtype)
+
+        ### Build network ###
+        # Input
+        input = Input(shape=(input_length,), name="input", dtype=self.dtype)
+
+        # Hidden layers
+        for idx, layer_info in enumerate(self.deep_arch):
+            # Get layer class
+            if layer_info[0] == "Dense":
+                layer_class = ed.layers.DenseVariationalDropout
+            else:
+                layer_class = ed.layers.DenseVariationalDropout
+            # Build layers
+            if idx == 0:
+                hidden_layer = layer_class(
+                    units=layer_info[1],
+                    activation=self.hpar["actv"],
+                    dtype=self.dtype,
+                )(input, training=training)
+            else:
+                hidden_layer = layer_class(
+                    units=layer_info[1],
+                    activation=self.hpar["actv"],
+                    dtype=self.dtype,
+                )(
+                    hidden_layer, training=training  # type: ignore
+                )
+
+        # Different activation functions for output
+        # Different activation functions for output (alpha_0 and positive
+        # increments)
+        alpha0_out = Dense(units=1, dtype=self.dtype)(
+            hidden_layer  # type: ignore
+        )
+        alphai_out = Dense(
+            units=self.hpar["p_degree"],
+            activation="softplus",
+            dtype=self.dtype,
+        )(
+            hidden_layer  # type: ignore
+        )
+
+        # Concatenate output
+        output = Concatenate()([alpha0_out, alphai_out])
+
+        # Define model
+        model = Model(inputs=input, outputs=output)
+
+        # Return model
+        return model
+
+
+class BQNConcreteDropoutModel(BQNBaseModel):
+    def _get_architecture(self, input_length: int, training: bool) -> Model:
+        tf.keras.backend.set_floatx(self.dtype)
+
+        ### Build network ###
+        # Input
+        input = Input(shape=(input_length,), name="input", dtype=self.dtype)
+
+        train_sample_size = 5000
+        wr = get_weight_regularizer(N=train_sample_size, l=1e-2, tau=1.0)
+        dr = get_dropout_regularizer(
+            N=train_sample_size, tau=1.0, cross_entropy_loss=False
+        )
+        # Hidden layers
+        for idx, layer_info in enumerate(self.deep_arch):
+            # Get layer class
+            if layer_info[0] == "Dense":
+                layer_class = Dense
+            else:
+                layer_class = Dense
+            # Build layers
+            if idx == 0:
+                hidden_layer = ConcreteDenseDropout(
+                    layer_class(
+                        units=layer_info[1],
+                        activation=self.hpar["actv"],
+                        dtype=self.dtype,
+                    ),
+                    weight_regularizer=wr,
+                    dropout_regularizer=dr,
+                    is_mc_dropout=True,
+                )(input, training=training)
+            else:
+                hidden_layer = ConcreteDenseDropout(
+                    layer_class(
+                        units=layer_info[1],
+                        activation=self.hpar["actv"],
+                        dtype=self.dtype,
+                    ),
+                    weight_regularizer=wr,
+                    dropout_regularizer=dr,
+                    is_mc_dropout=True,
+                )(
+                    hidden_layer, training=training  # type: ignore
+                )
+
+        # Different activation functions for output
+        # Different activation functions for output (alpha_0 and positive
+        # increments)
+        alpha0_out = Dense(units=1, dtype=self.dtype)(
+            hidden_layer  # type: ignore
+        )
+        alphai_out = Dense(
+            units=self.hpar["p_degree"],
+            activation="softplus",
+            dtype=self.dtype,
+        )(
+            hidden_layer  # type: ignore
+        )
+
+        # Concatenate output
+        output = Concatenate()([alpha0_out, alphai_out])
+
+        # Define model
+        model = Model(inputs=input, outputs=output)
+
+        # Return model
+        return model
+
+    def _store_params(self):
+        if self.p_dropout is None:
+            self.p_dropout = []
+        for layer in self.model.layers:
+            if isinstance(layer, ConcreteDenseDropout):
+                self.p_dropout.append(
+                    tf.nn.sigmoid(layer.trainable_variables[0]).numpy()[0]
+                )
+        print(f"Learned Dropout rates: {self.p_dropout}")
+
+
+class BQNBatchEnsembleModel(BQNBaseModel):
+    def __init__(
+        self,
+        nn_deep_arch: list[Any],
+        n_ens: int,
+        n_cores: int,
+        rpy_elements: dict[str, Any],
+        dtype: str = "float32",
+        q_levels: NDArray[Any, Float] | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            nn_deep_arch,
+            n_ens,
+            n_cores,
+            rpy_elements,
+            dtype,
+            q_levels,
+            **kwargs,
+        )
+        # self.hpar["n_batch"] = self.hpar["n_batch"] * self.n_ens
+
+    def _get_architecture(self, input_length: int, training: bool) -> Model:
+        tf.keras.backend.set_floatx(self.dtype)
+
+        ### Build network ###
+        # Input
+        input = Input(shape=(input_length,), name="input", dtype=self.dtype)
+
+        # Make initializer
+        def make_initializer(num):
+            return ed.initializers.RandomSign(num)
+
+        # Hidden layers
+        for idx, layer_info in enumerate(self.deep_arch):
+            # Get layer class
+            if layer_info[0] == "Dense":
+                layer_class = ed.layers.DenseBatchEnsemble
+            else:
+                layer_class = ed.layers.DenseBatchEnsemble
+            # Build layers
+            if idx == 0:
+                hidden_layer = layer_class(
+                    units=layer_info[1],
+                    rank=1,
+                    ensemble_size=self.n_ens,
+                    use_bias=True,
+                    alpha_initializer=make_initializer(0.5),  # type: ignore
+                    gamma_initializer=make_initializer(0.5),  # type: ignore
+                    activation=self.hpar["actv"],
+                    dtype=self.dtype,
+                )(input, training=training)
+            else:
+                hidden_layer = layer_class(
+                    units=layer_info[1],
+                    rank=1,
+                    ensemble_size=self.n_ens,
+                    use_bias=True,
+                    alpha_initializer=make_initializer(0.5),  # type: ignore
+                    gamma_initializer=make_initializer(0.5),  # type: ignore
+                    activation=self.hpar["actv"],
+                    dtype=self.dtype,
+                )(
+                    hidden_layer, training=training  # type: ignore
+                )
+
+        # Different activation functions for output
+        # Different activation functions for output (alpha_0 and positive
+        # increments)
+        alpha0_out = ed.layers.DenseBatchEnsemble(
+            units=1,
+            rank=1,
+            ensemble_size=self.n_ens,
+            use_bias=True,
+            alpha_initializer=make_initializer(0.5),  # type: ignore
+            gamma_initializer=make_initializer(0.5),  # type: ignore
+            dtype=self.dtype,
+        )(
+            hidden_layer  # type: ignore
+        )
+        alphai_out = ed.layers.DenseBatchEnsemble(
+            units=self.hpar["p_degree"],
+            rank=1,
+            ensemble_size=self.n_ens,
+            use_bias=True,
+            alpha_initializer=make_initializer(0.5),  # type: ignore
+            gamma_initializer=make_initializer(0.5),  # type: ignore
+            activation="softplus",
+            dtype=self.dtype,
+        )(
+            hidden_layer  # type: ignore
+        )
+
+        # Concatenate output
+        output = Concatenate()([alpha0_out, alphai_out])
+
+        # Define model
+        model = Model(inputs=input, outputs=output)
+
+        # Return model
+        return model
+
+    def predict(self, X_test: NDArray) -> None:
+        # Scale data for prediction
+        self.n_test = X_test.shape[0]
+        X_pred = (X_test - self.tr_center) / self.tr_scale
+
+        ### Prediciton ###
+        # Take time
+        start_tm = time.time_ns()
+
+        # Extract all trained weights
+        weights = self.model.get_weights()
+        # Copy weights to adjust them for the ensemble members
+        new_weights = copy.deepcopy(weights)
+        # Create new model with same architecture but n_ens=1
+        new_model = self._build_single_model(input_length=X_pred.shape[1])
+
+        # Initialize predictions
+        self.predictions = []
+
+        # Iterate and extract each ensemble member
+        for i_ens in range(self.n_ens):
+
+            # Iterate over layers and extract new model's weights
+            for i_layer_weights, layer_weights in enumerate(weights):
+                # Keep shared weights
+                if (i_layer_weights % 4) == 0:
+                    new_weights[i_layer_weights] = layer_weights
+                # Extract alpha, gammas and bias
+                elif (i_layer_weights % 4) != 0:
+                    new_weights[i_layer_weights] = np.reshape(
+                        layer_weights[i_ens],
+                        newshape=(1, layer_weights.shape[1]),
+                    )
+
+            # Set new weights
+            new_model.set_weights(new_weights)
+
+            # Make predictions with temporary models
+            # In order to match dimensions in DenseBatchEnsemble use batchsize
+            # from training
+            self.predictions.append(
+                new_model.predict(
+                    X_pred,
+                    verbose=self.hpar["nn_verbose"],
+                    batch_size=self.hpar["n_batch"],
+                )
+            )
+
+        # Take time
+        end_tm = time.time_ns()
+
+        # Time needed
+        self.runtime_pred = end_tm - start_tm
+
+    def _build_single_model(self, input_length):
+        # Save originial n_ens
+        n_ens_original = self.n_ens
+
+        # Use n_ens = 1 for temporary model
+        self.n_ens = 1
+        model = self._build(input_length=input_length)
+
+        # Reset n_ens to original value
+        self.n_ens = n_ens_original
+
+        return model
+
+    def get_results(self, y_test: NDArray) -> list[dict[str, Any]]:
+        # Initialize results
+        results = []
+
+        ### Evaluation ###
+        for coeff_bern in self.predictions:
+            # Accumulate increments
+            coeff_bern = np.cumsum(coeff_bern, axis=1)
+
+            ### Evaluation ###
+            # Sum up calcuated quantiles (Sum of basis at quantiles times
+            # coefficients)
+            q = bern_quants(alpha=coeff_bern, q_levels=self.q_levels)
+            # Calculate evaluation measres of DRN forecasts
+            scores = fn_scores_ens(
+                ens=q,
+                y=y_test,
+                skip_evals=["e_me"],
+                scores_ens=True,
+                rpy_elements=self.rpy_elements,
+            )
+
+            # Transform ranks to n_(ens+1) bins (for multiples of (n_ens+1) exact)
+            if q.shape[1] != self.n_ens:
+                scores["rank"] = np.ceil(
+                    scores["rank"] * (self.n_ens + 1) / (q.shape[1] + 1)
+                )
+
+            # Calculate bias of mean forecast (formula given)
+            scores["e_me"] = np.mean(coeff_bern, axis=1) - y_test
+
+            results.append(
+                {
+                    "f": q,
+                    "alpha": coeff_bern,
+                    "nn_ls": self.hpar,
+                    "scores": scores,
+                    "n_train": self.n_train,
+                    "n_valid": self.n_valid,
+                    "n_test": self.n_test,
+                    "runtime_est": self.runtime_est,
+                    "runtime_pred": self.runtime_pred,
+                }
+            )
+
+        ### Output ###
+        # Output
+        return results
