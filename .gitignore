@@ -5,22 +5,10 @@ __pycache__
 .ipynb_checkpoints
 .mypy_cache
 
-data/bagging/agg
-data/bagging/model
-data/mc_dropout/agg
-data/mc_dropout/model
-data/random_init/agg
-data/random_init/model
-data/standard_dropout/agg
-data/standard_dropout/model
-data/bayesian/agg
-data/bayesian/model
-data/dropconnect/model
-data/dropconnect/agg
-data/variational_dropout/model
-data/variational_dropout/agg
+data/input/
+data/results/*/*/agg
+data/results/*/*/model
 
-data/ss_data/*
 plots/*
 notebooks
 /*.pkl
