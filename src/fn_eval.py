@@ -240,7 +240,7 @@ def fn_scores_ens(ens, y, skip_evals=None, scores_ens=True, rpy_elements=None):
     ### Output ###
     # Skip evaluation measures
     if skip_evals is not None:
-        scores_ens = scores_ens.drop(columns=skip_evals)
+        scores_ens.drop(columns=skip_evals, inplace=True)
 
     # Return output
     return scores_ens
@@ -248,7 +248,7 @@ def fn_scores_ens(ens, y, skip_evals=None, scores_ens=True, rpy_elements=None):
 
 def fn_scores_distr(
     f, y, distr="tlogis", n_ens=20, skip_evals=None, rpy_elements=None
-):
+) -> pd.DataFrame:  # type: ignore
     """Function for prediciton based on the distributional parameters
 
     Parameters
@@ -405,7 +405,7 @@ def fn_scores_distr(
         ### Output ###
         # Skip evaluation measures
         if skip_evals is not None:
-            scores_pp = scores_pp.drop(columns=skip_evals)
+            scores_pp.drop(columns=skip_evals, inplace=True)
 
         # Return
         return scores_pp

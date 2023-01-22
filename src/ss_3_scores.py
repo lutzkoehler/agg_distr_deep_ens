@@ -21,34 +21,43 @@ def main():
     start_time = time_ns()
 
     ### Settings ###
+    ens_method = CONFIG["ENS_METHOD"]
     # Path of simulated data
-    data_sim_path = os.path.join(
-        CONFIG["PATHS"]["DATA_DIR"], CONFIG["PATHS"]["SIM_DATA"]
+    data_raw_path = os.path.join(
+        CONFIG["PATHS"]["DATA_DIR"],
+        CONFIG["PATHS"]["INPUT_DIR"],
+        "dataset",
     )
 
     # Path of deep ensemble forecasts
     data_ens_path = os.path.join(
         CONFIG["PATHS"]["DATA_DIR"],
-        CONFIG["ENS_METHOD"],
+        CONFIG["PATHS"]["RESULTS_DIR"],
+        "dataset",
+        ens_method,
         CONFIG["PATHS"]["ENSEMBLE_F"],
     )
 
     # Path of aggregated forecasts
     data_agg_path = os.path.join(
         CONFIG["PATHS"]["DATA_DIR"],
-        CONFIG["ENS_METHOD"],
+        CONFIG["PATHS"]["RESULTS_DIR"],
+        "dataset",
+        ens_method,
         CONFIG["PATHS"]["AGG_F"],
     )
 
     # Path of results
     data_out_path = os.path.join(
         CONFIG["PATHS"]["DATA_DIR"],
-        CONFIG["ENS_METHOD"],
+        CONFIG["PATHS"]["RESULTS_DIR"],
+        "dataset",
+        ens_method,
     )
 
     ### Initialize ###
     # Models considered
-    scenario_vec = CONFIG["PARAMS"]["SCENARIO_VEC"]
+    dataset_ls = CONFIG["DATASET"]
 
     # Number of simulations
     n_sim = CONFIG["PARAMS"]["N_SIM"]
@@ -69,15 +78,7 @@ def main():
     nn_vec = CONFIG["PARAMS"]["NN_VEC"]
 
     # Aggregation methods
-    # lp -> Linear pool
-    # vi -> Vincentization
-    # vi-w -> Vincentization with weight estimation
-    # vi-a -> Vincentization with intercept estimation
-    # vi-aw -> Vincentization with weight and intercept estimation
-    agg_meths_ls = {
-        "drn": ["lp", "vi", "vi-w", "vi-a", "vi-aw"],
-        "bqn": ["lp", "vi", "vi-w", "vi-a", "vi-aw"],
-    }
+    agg_meths_ls = CONFIG["PARAMS"]["AGG_METHS_LS"]
 
     # To evaluate
     sr_eval = ["crps", "logs", "lgt", "cov", "mae", "me", "rmse"]
@@ -108,19 +109,22 @@ def main():
     ### Create data frame ###
     df_scores = pd.DataFrame(columns=col_vec_pp)
 
-    # For-Loop over network types
-    for temp_nn in nn_vec:
-        agg_meths = agg_meths_ls[temp_nn]
+    # For-Loop over scenarios and simulations
+    for dataset in dataset_ls:
+        # For-Loop over network types
+        for temp_nn in nn_vec:
+            agg_meths = agg_meths_ls[temp_nn]
 
-        # For-Loop over scenarios and simulations
-        for i_scenario in scenario_vec:
             for i_sim in range(n_sim):
                 ### Calculate optimal scores based on data generation ###
                 if temp_nn == nn_vec[0]:
                     # Load data
-                    filename = f"scen_{i_scenario}_sim_{i_sim}.pkl"
+                    filename = f"sim_{i_sim}.pkl"
+                    temp_data_raw_path = data_raw_path.replace(
+                        "dataset", dataset
+                    )
                     with open(
-                        os.path.join(data_sim_path, filename), "rb"
+                        os.path.join(temp_data_raw_path, filename), "rb"
                     ) as f:
                         (
                             _,  # X_train
@@ -133,7 +137,7 @@ def main():
 
                     # Make entry for optimal forecast
                     new_row = {
-                        "model": i_scenario,
+                        "model": dataset,
                         "n_sim": i_sim,
                         "nn": "ref",
                         "type": "ref",
@@ -174,7 +178,7 @@ def main():
                 for i_rep in range(n_rep):
                     # Write in data frame
                     new_row = {
-                        "model": i_scenario,
+                        "model": dataset,
                         "n_sim": i_sim,
                         "nn": temp_nn,
                         "type": "ind",
@@ -184,10 +188,13 @@ def main():
 
                     # Load ensemble member
                     filename = os.path.join(
-                        f"{temp_nn}_scen_{i_scenario}_sim_{i_sim}_ens_{i_rep}.pkl",  # noqa: E501
+                        f"{temp_nn}_sim_{i_sim}_ens_{i_rep}.pkl",  # noqa: E501
+                    )
+                    temp_data_ens_path = data_ens_path.replace(
+                        "dataset", dataset
                     )
                     with open(
-                        os.path.join(data_ens_path, filename), "rb"
+                        os.path.join(temp_data_ens_path, filename), "rb"
                     ) as f:
                         pred_nn, _, _ = pickle.load(
                             f
@@ -254,7 +261,7 @@ def main():
                     for i_ens in n_ens_vec:
                         # Write in data frame
                         new_row = {
-                            "model": i_scenario,
+                            "model": dataset,
                             "n_sim": i_sim,
                             "nn": temp_nn,
                             "type": temp_agg,
@@ -268,10 +275,13 @@ def main():
 
                         # Load aggregated forecasts
                         filename = os.path.join(
-                            f"{temp_nn}_scen_{i_scenario}_sim_{i_sim}_{temp_agg}_ens_{i_ens}.pkl",  # noqa: E501
+                            f"{temp_nn}_sim_{i_sim}_{temp_agg}_ens_{i_ens}.pkl",  # noqa: E501
+                        )
+                        temp_data_agg_path = data_agg_path.replace(
+                            "dataset", dataset
                         )
                         with open(
-                            os.path.join(data_agg_path, filename), "rb"
+                            os.path.join(temp_data_agg_path, filename), "rb"
                         ) as f:
                             pred_agg = pickle.load(f)
 
@@ -313,7 +323,7 @@ def main():
                             # Reference is given by mean score of network
                             # ensemble members
                             s_ref = df_scores[
-                                (df_scores["model"] == i_scenario)
+                                (df_scores["model"] == dataset)
                                 & (df_scores["n_sim"] == i_sim)
                                 & (df_scores["nn"] == temp_nn)
                                 & (df_scores["type"] == "ind")
@@ -322,7 +332,7 @@ def main():
 
                             # Score of optimal forecast
                             s_opt = df_scores[
-                                (df_scores["model"] == i_scenario)
+                                (df_scores["model"] == dataset)
                                 & (df_scores["n_sim"] == i_sim)
                                 & (df_scores["nn"] == "ref")
                             ][temp_sr]
@@ -343,15 +353,18 @@ def main():
                             ],
                             ignore_index=True,
                         )
-    # Take time
-    end_time = time_ns()
+        # Take time
+        end_time = time_ns()
 
-    ### Save ###
-    filename = "eval_ss.pkl"
-    with open(os.path.join(data_out_path, filename), "wb") as f:
-        pickle.dump(df_scores, f)
-    print(f"Finished scoring - Results stored in file {filename}")
-    print(f"Total time spent: {(end_time - start_time) / 1e+9}s")
+        ### Save ###
+        filename = "eval.pkl"
+        temp_data_out_path = data_out_path.replace("dataset", dataset)
+        with open(os.path.join(temp_data_out_path, filename), "wb") as f:
+            pickle.dump(df_scores, f)
+        print(
+            f"{dataset.upper()}, {ens_method}: Finished scoring of {filename}",
+            f"- {(end_time - start_time) / 1e+9:.2f}s",
+        )
 
 
 if __name__ == "__main__":

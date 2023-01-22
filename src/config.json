@@ -1,12 +1,25 @@
 {
-    "ENS_METHOD": "variational_dropout",
+    "DATASET": [
+        "scen_1"
+    ],
+    "_available_DATASET": [
+        "scen_1",
+        "scen_2",
+        "scen_3",
+        "scen_4",
+        "scen_5",
+        "scen_6"
+    ],
+    "ENS_METHOD": "rand_init",
     "_available_ENS_METHOD": [
         "bagging",
         "mc_dropout",
         "dropconnect",
         "variational_dropout",
-        "random_init",
-        "bayesian"
+        "concrete_dropout",
+        "rand_init",
+        "bayesian",
+        "batchensemble"
     ],
     "NN_DEEP_ARCH": [
         [
@@ -24,6 +37,24 @@
         [
             [
                 "Dense",
+                128
+            ],
+            [
+                "Dense",
+                128
+            ],
+            [
+                "Dense",
+                128
+            ],
+            [
+                "Dense",
+                64
+            ]
+        ],
+        [
+            [
+                "Dense",
                 64
             ],
             [
@@ -38,32 +69,15 @@
                 "Dense",
                 32
             ]
-        ],
-        [
-            [
-                "Dense",
-                128
-            ],
-            [
-                "Dense",
-                128
-            ],
-            [
-                "Dense",
-                128
-            ],
-            [
-                "Dense",
-                64
-            ]
         ]
     ],
     "PATHS": {
         "DATA_DIR": "data",
-        "PLOTS_DIR": "plots",
-        "SIM_DATA": "ss_data",
+        "INPUT_DIR": "input",
+        "RESULTS_DIR": "results",
         "ENSEMBLE_F": "model",
-        "AGG_F": "agg"
+        "AGG_F": "agg",
+        "PLOTS_DIR": "plots"
     },
     "PARAMS": {
         "NN_VEC": [
@@ -72,9 +86,6 @@
         "_available_NN_VEC": [
             "drn",
             "bqn"
-        ],
-        "SCENARIO_VEC": [
-            1
         ],
         "AGG_METHS_LS": {
             "drn": [

@@ -2,7 +2,6 @@
 # Generation of deep ensembles
 
 
-import itertools
 import json
 import os
 import pickle
@@ -10,6 +9,7 @@ import time
 from typing import Any, Tuple, Type
 
 import numpy as np
+import pandas as pd
 from joblib import Parallel, delayed
 from nptyping import Float, NDArray
 from rpy2.robjects import default_converter, numpy2ri
@@ -25,9 +25,11 @@ METHOD_CLASS_CONFIG = {
     "mc_dropout": "Dropout",
     "dropconnect": "DropConnect",
     "variational_dropout": "VariationalDropout",
+    "concrete_dropout": "ConcreteDropout",
     "bayesian": "Bayesian",
     "rand_init": "RandInit",
     "bagging": "RandInit",
+    "batchensemble": "BatchEnsemble",
 }
 METHOD_NUM_MODELS = {
     "single_model": [
@@ -35,13 +37,156 @@ METHOD_NUM_MODELS = {
         "dropconnect",
         "variational_dropout",
         "bayesian",
+        "concrete_dropout",
     ],
-    "multi_model": ["rand_init", "bagging"],
+    "multi_model": [
+        "rand_init",
+        "bagging",
+    ],
+    "parallel_model": ["batchensemble"],
 }
 
 
+def run_ensemble_parallel_model(
+    dataset: str,
+    i_sim: int,
+    n_ens: int,
+    nn_vec: list[str],
+    data_in_path: str,
+    data_out_path: str,
+    num_cores: int,
+    ens_method: str = "batchensemble",
+    nn_deep_arch: list[Any] | None = None,
+) -> None:
+    """Use one model to predict n_ens times in parallel
+
+    Saves the following information to a pickle file:
+    [pred_nn, y_valid, y_test]
+
+    Parameters
+    ----------
+    dataset : str
+        Name of dataset
+    i_sim : int
+        Simulation run
+    n_ens : int
+        Ensemble size
+    nn_vec : list[str]
+        Contains NN types
+    data_in_path : str
+        Location of generated simulation data (see ss_0_data.py)
+    data_out_path : str
+        Location to save results
+    ens_method : str
+        Specifies the initialization method to use
+    """
+    ### Initialization ###
+    # Initialize rpy elements for all scoring functions
+    rpy_elements = {
+        "base": importr("base"),
+        "scoring_rules": importr("scoringRules"),
+        "crch": importr("crch"),
+        "np_cv_rules": default_converter + numpy2ri.converter,
+    }
+
+    # Set standard architecture
+    if nn_deep_arch is None:
+        nn_deep_arch = [[["Dense", 64], ["Dense", 32]]]
+
+    ### Get and split data ###
+    (
+        X_train,
+        y_train,
+        X_valid,
+        y_valid,
+        X_test,
+        y_test,
+    ) = train_valid_test_split(
+        data_in_path=data_in_path, dataset=dataset, i_sim=i_sim
+    )
+
+    ### Loop over network variants ###
+    # For-Loop over network variants
+    for temp_nn in nn_vec:
+        # Read out class
+        model_class = get_model_class(temp_nn, ens_method)
+
+        # Set seed (same for each network variant)
+        np.random.seed(123 + 100 * i_sim)
+
+        ### Run model ###
+        # Create model
+        model = model_class(
+            n_ens=n_ens,
+            nn_deep_arch=nn_deep_arch[0],
+            n_cores=num_cores,
+            rpy_elements=rpy_elements,
+        )
+
+        # Build model
+        model.fit(
+            X_train=X_train,
+            y_train=y_train,
+            X_valid=X_valid,
+            y_valid=y_valid,
+        )
+        print(
+            f"{temp_nn.upper()}, {dataset.upper()}: Finished training of",
+            f"{temp_nn}_sim_{i_sim}_ens_0.pkl",
+            f"- {(model.runtime_est)/1e+9:.2f}s",
+        )
+
+        # Take time
+        start_time = time.time_ns()
+
+        # Run all predictions
+        model.predict(X_test=np.r_[X_valid, X_test])
+
+        # Get results
+        pred_nn_ls = model.get_results(y_test=np.hstack((y_valid, y_test)))
+
+        # For-Loop over ensemble member
+        for i_ens in range(n_ens):
+            # Extract ensemble member prediction
+            current_pred_nn = pred_nn_ls[i_ens]  # type: ignore
+
+            # Transform ranks
+            if "rank" in current_pred_nn["scores"].keys():
+                current_pred_nn["scores"]["pit"] = fn_upit(
+                    ranks=current_pred_nn["scores"]["rank"],
+                    max_rank=max(current_pred_nn["scores"]["rank"]),
+                )
+
+                # Omit ranks
+                current_pred_nn["scores"]["rank"] = np.nan
+
+            # Take time
+            end_time = time.time_ns()
+
+            # Save ensemble member
+            filename = os.path.join(
+                f"{temp_nn}_sim_{i_sim}_ens_{i_ens}.pkl",  # noqa: E501
+            )
+            temp_data_out_path = os.path.join(data_out_path, filename)
+
+            # Check for NaNs in predictions
+            if np.any(np.isnan(current_pred_nn["f"])):
+                print(f"NaNs predicted in {temp_data_out_path}")
+
+            with open(temp_data_out_path, "wb") as f:
+                pickle.dump([current_pred_nn, y_valid, y_test], f)
+
+            print(
+                f"{dataset.upper()}, {temp_nn.upper()}:",
+                f"Finished prediction of {filename} -",
+                f"{(end_time - start_time)/1e+9:.2f}s",
+            )
+
+        del model
+
+
 def run_ensemble_single_model(
-    i_scenario: int,
+    dataset: str,
     i_sim: int,
     n_ens: int,
     nn_vec: list[str],
@@ -58,8 +203,8 @@ def run_ensemble_single_model(
 
     Parameters
     ----------
-    i_scenario : int
-        Scenario / Model number
+    dataset : str
+        Name of dataset
     i_sim : int
         Simulation run
     n_ens : int
@@ -86,13 +231,16 @@ def run_ensemble_single_model(
         training = True
     else:
         training = False
+
     # Set standard architecture
     if nn_deep_arch is None:
         nn_deep_arch = [[["Dense", 64], ["Dense", 32]]]
 
+    # Set default list for multiple architectures
     nn_deep_arch_ls = np.floor(
         np.linspace(start=0, stop=n_ens, num=len(nn_deep_arch) + 1)
     )
+
     ### Get and split data ###
     (
         X_train,
@@ -102,7 +250,7 @@ def run_ensemble_single_model(
         X_test,
         y_test,
     ) = train_valid_test_split(
-        data_in_path=data_in_path, i_scenario=i_scenario, i_sim=i_sim
+        data_in_path=data_in_path, dataset=dataset, i_sim=i_sim
     )
 
     ### Loop over network variants ###
@@ -112,7 +260,7 @@ def run_ensemble_single_model(
         model_class = get_model_class(temp_nn, ens_method)
 
         # Set seed (same for each network variant)
-        np.random.seed(123 + 10 * i_scenario + 100 * i_sim)
+        np.random.seed(123 + 100 * i_sim)
 
         ### Run model ###
         # Create model
@@ -132,9 +280,9 @@ def run_ensemble_single_model(
             y_valid=y_valid,
         )
         print(
-            f"{temp_nn.upper()}: Finished training of",
-            f"{temp_nn}_scen_{i_scenario}_sim_{i_sim}_ens_0.pkl",
-            f"- {(model.runtime_est)/1e+9}s",
+            f"{temp_nn.upper()}, {dataset.upper()}: Finished training of",
+            f"{temp_nn}_sim_{i_sim}_ens_0.pkl",
+            f"- {(model.runtime_est)/1e+9:.2f}s",
         )
 
         # For-Loop over ensemble member
@@ -182,7 +330,7 @@ def run_ensemble_single_model(
 
             # Save ensemble member
             filename = os.path.join(
-                f"{temp_nn}_scen_{i_scenario}_sim_{i_sim}_ens_{i_ens}.pkl",  # noqa: E501
+                f"{temp_nn}_sim_{i_sim}_ens_{i_ens}.pkl",  # noqa: E501
             )
             temp_data_out_path = os.path.join(data_out_path, filename)
 
@@ -194,15 +342,16 @@ def run_ensemble_single_model(
                 pickle.dump([pred_nn, y_valid, y_test], f)
 
             print(
-                f"{temp_nn.upper()}: Finished prediction of {filename}"
-                f" - {(end_time - start_time)/1e+9}s",
+                f"{dataset.upper()}, {temp_nn.upper()}:",
+                f"Finished prediction of {filename} -",
+                f"{(end_time - start_time)/1e+9:.2f}s",
             )
 
         del model
 
 
 def run_ensemble_multi_model(
-    i_scenario: int,
+    dataset: str,
     i_sim: int,
     n_ens: int,
     nn_vec: list[str],
@@ -219,8 +368,8 @@ def run_ensemble_multi_model(
 
     Parameters
     ----------
-    i_scenario : int
-        Scenario / Model number
+    dataset : str
+        Name of dataset
     i_sim : int
         Simulation run
     n_ens : int
@@ -242,8 +391,15 @@ def run_ensemble_multi_model(
         "crch": importr("crch"),
         "np_cv_rules": default_converter + numpy2ri.converter,
     }
+
+    # Set standard architecture
     if nn_deep_arch is None:
         nn_deep_arch = [["Dense", 64], ["Dense", 32]]
+
+    # Set default list for multiple architectures
+    nn_deep_arch_ls = np.floor(
+        np.linspace(start=0, stop=n_ens, num=len(nn_deep_arch) + 1)
+    )
 
     ### Get and split data ###
     (
@@ -254,7 +410,7 @@ def run_ensemble_multi_model(
         X_test,
         y_test,
     ) = train_valid_test_split(
-        data_in_path=data_in_path, i_scenario=i_scenario, i_sim=i_sim
+        data_in_path=data_in_path, dataset=dataset, i_sim=i_sim
     )
 
     ### Loop over network variants ###
@@ -264,7 +420,7 @@ def run_ensemble_multi_model(
         model_class = get_model_class(temp_nn, ens_method)
 
         # Set seed (same for each network variant)
-        np.random.seed(123 + 10 * i_scenario + 100 * i_sim)
+        np.random.seed(123 + 100 * i_sim)
 
         # For-Loop over ensemble member
         for i_ens in range(n_ens):
@@ -286,9 +442,15 @@ def run_ensemble_multi_model(
                 X_train_nn, y_train_nn = X_train, y_train
 
             ### Run model ###
+            # Select current model architecture
+            temp_nn_deep_arch = nn_deep_arch[0]
+            if i_ens in nn_deep_arch_ls:
+                idx_arch = np.where(nn_deep_arch_ls == i_ens)[0][0]
+                temp_nn_deep_arch = nn_deep_arch[idx_arch]
+
             # Create model
             model = model_class(
-                nn_deep_arch=nn_deep_arch,
+                nn_deep_arch=temp_nn_deep_arch,
                 n_ens=n_ens,
                 n_cores=num_cores,
                 rpy_elements=rpy_elements,
@@ -323,7 +485,7 @@ def run_ensemble_multi_model(
 
             # Save ensemble member
             filename = os.path.join(
-                f"{temp_nn}_scen_{i_scenario}_sim_{i_sim}_ens_{i_ens}.pkl",  # noqa: E501
+                f"{temp_nn}_sim_{i_sim}_ens_{i_ens}.pkl",  # noqa: E501
             )
             temp_data_out_path = os.path.join(data_out_path, filename)
 
@@ -331,8 +493,9 @@ def run_ensemble_multi_model(
                 pickle.dump([pred_nn, y_valid, y_test], f)
 
             print(
-                f"{temp_nn.upper()}: Finished training of {filename}"
-                f" - {(end_time - start_time)/1e+9}s",
+                f"{dataset.upper()}, {temp_nn.upper()}:",
+                f"Finished training of {filename} -",
+                f"{(end_time - start_time)/1e+9:.2f}s",
             )
 
             del model
@@ -360,7 +523,7 @@ def get_model_class(temp_nn: str, ens_method: str) -> Type[BaseModel]:
 
 
 def train_valid_test_split(
-    data_in_path: str, i_scenario: int, i_sim: int
+    data_in_path: str, dataset: str, i_sim: int
 ) -> Tuple[
     NDArray[Any, Float],
     NDArray[Any, Float],
@@ -375,8 +538,8 @@ def train_valid_test_split(
     ----------
     data_in_path : str
         Location of simulated data
-    i_scenario : int
-        Scenario / Model number
+    dataset : str
+        Name of dataset
     i_sim : int
         Run number
 
@@ -386,9 +549,7 @@ def train_valid_test_split(
         Contains (X_train, y_train, X_valid, y_valid, X_test, y_test)
     """
     # Load corresponding data
-    temp_data_in_path = os.path.join(
-        data_in_path, f"scen_{i_scenario}_sim_{i_sim}.pkl"
-    )
+    temp_data_in_path = os.path.join(data_in_path, f"sim_{i_sim}.pkl")
 
     with open(temp_data_in_path, "rb") as f:
         (
@@ -401,7 +562,7 @@ def train_valid_test_split(
         ) = pickle.load(f)
 
     # Indices of validation set
-    if i_scenario == 6:
+    if dataset.endswith("6"):
         i_valid = np.arange(start=2_500, stop=3_000, step=1)
     else:
         i_valid = np.arange(
@@ -422,25 +583,13 @@ def main():
     with open("src/config.json", "rb") as f:
         CONFIG = json.load(f)
 
-    # Path of simulated data
-    data_in_path = os.path.join(
-        CONFIG["PATHS"]["DATA_DIR"], CONFIG["PATHS"]["SIM_DATA"]
-    )
-
-    # Path of deep ensemble forecasts
-    data_out_path = os.path.join(
-        CONFIG["PATHS"]["DATA_DIR"],
-        CONFIG["ENS_METHOD"],
-        CONFIG["PATHS"]["ENSEMBLE_F"],
-    )
-
     ### Initialize ###
     # Networks
     nn_vec = CONFIG["PARAMS"]["NN_VEC"]
     nn_deep_arch = CONFIG["NN_DEEP_ARCH"]
 
-    # Models considered
-    scenario_vec = CONFIG["PARAMS"]["SCENARIO_VEC"]
+    # Datasets considered
+    dataset_ls = CONFIG["DATASET"]
 
     # Number of simulated runs
     n_sim = CONFIG["PARAMS"]["N_SIM"]
@@ -458,45 +607,77 @@ def main():
     if ens_method in METHOD_NUM_MODELS["single_model"]:
         run_ensemble = run_ensemble_single_model
     # Or use the same model to predict each ensemble member
-    else:
+    elif ens_method in METHOD_NUM_MODELS["multi_model"]:
         run_ensemble = run_ensemble_multi_model
+    else:
+        run_ensemble = run_ensemble_parallel_model
+
+    # Generate grid with necessary information for each run
+    run_grid = pd.DataFrame(
+        columns=["dataset", "i_sim", "data_in_path", "data_out_path"]
+    )
+    for dataset in dataset_ls:
+        data_in_path = os.path.join(
+            CONFIG["PATHS"]["DATA_DIR"],
+            CONFIG["PATHS"]["INPUT_DIR"],
+            dataset,
+        )
+        data_out_path = os.path.join(
+            CONFIG["PATHS"]["DATA_DIR"],
+            CONFIG["PATHS"]["RESULTS_DIR"],
+            dataset,
+            CONFIG["ENS_METHOD"],
+            CONFIG["PATHS"]["ENSEMBLE_F"],
+        )
+        if dataset.startswith("scen"):
+            temp_n_sim = n_sim
+        else:
+            temp_n_sim = 20
+        for i_sim in range(temp_n_sim):
+            new_row = {
+                "dataset": dataset,
+                "i_sim": i_sim,
+                "data_in_path": data_in_path,
+                "data_out_path": data_out_path,
+            }
+            run_grid = pd.concat(
+                [run_grid, pd.DataFrame(new_row, index=[0])],
+                ignore_index=True,
+            )
 
     # Run sequential or run parallel
-    run_parallel = False
+    run_parallel = True
 
     if run_parallel:
         ### Run parallel ###
         Parallel(n_jobs=7, backend="multiprocessing")(
             delayed(run_ensemble)(
-                i_scenario=i_scenario,
-                i_sim=i_sim,
+                dataset=row["dataset"],
+                i_sim=row["i_sim"],
                 n_ens=n_ens,
                 nn_vec=nn_vec,
-                data_in_path=data_in_path,
-                data_out_path=data_out_path,
+                data_in_path=row["data_in_path"],
+                data_out_path=row["data_out_path"],
                 num_cores=num_cores,
                 ens_method=ens_method,
                 nn_deep_arch=nn_deep_arch,
             )
-            for i_scenario, i_sim in itertools.product(
-                scenario_vec, range(n_sim)
-            )
+            for _, row in run_grid.iterrows()
         )
     else:
         ### Run sequential ###
-        for i_scenario in scenario_vec:
-            for i_sim in range(n_sim):
-                run_ensemble(
-                    i_scenario,
-                    i_sim,
-                    n_ens,
-                    nn_vec,
-                    data_in_path,
-                    data_out_path,
-                    num_cores,
-                    ens_method,
-                    nn_deep_arch=nn_deep_arch,
-                )
+        for _, row in run_grid.iterrows():
+            run_ensemble(
+                dataset=row["dataset"],
+                i_sim=row["i_sim"],
+                n_ens=n_ens,
+                nn_vec=nn_vec,
+                data_in_path=row["data_in_path"],
+                data_out_path=row["data_out_path"],
+                num_cores=num_cores,
+                ens_method=ens_method,
+                nn_deep_arch=nn_deep_arch,
+            )
 
 
 if __name__ == "__main__":

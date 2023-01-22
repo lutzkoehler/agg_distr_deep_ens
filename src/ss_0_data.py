@@ -280,7 +280,7 @@ def simulate_data(i_scenario: int, i_sim: int, data_out_path: str) -> None:
     ### Save data ###
     # Save ensemble member
     save_path = os.path.join(
-        data_out_path, f"scen_{i_scenario}_sim_{i_sim}.pkl"
+        data_out_path, f"scen_{i_scenario}", f"sim_{i_sim}.pkl"
     )
     with open(save_path, "wb") as f:
         pickle.dump([X_train, y_train, X_test, y_test, f_opt, scores_opt], f)
@@ -295,29 +295,40 @@ if __name__ == "__main__":
     ### Settings ###
     # Path for simulated data
     data_out_path = os.path.join(
-        CONFIG["PATHS"]["DATA_DIR"], CONFIG["PATHS"]["SIM_DATA"]
+        CONFIG["PATHS"]["DATA_DIR"],
+        CONFIG["PATHS"]["INPUT_DIR"],
     )
 
     ### Initialize ###
     # Models considered
-    scenario_vec = CONFIG["PARAMS"]["SCENARIO_VEC"]
+    scenario_vec = [1, 2, 3, 4, 5, 6]
 
     # Number of simulations
     n_sim: int = CONFIG["PARAMS"]["N_SIM"]
 
     # Number of cores
     num_cores = CONFIG["NUM_CORES"]
-    ### Run sequential ###
-    # for i_scenario in scenario_vec:
-    #    for i_sim in range(n_sim):
-    #        simulate_data(i_scenario=i_scenario, i_sim=i_sim)
 
-    ### Run parallel ###
-    Parallel(n_jobs=num_cores, backend="multiprocessing")(
-        delayed(simulate_data)(
-            i_scenario=i_scenario,
-            i_sim=i_sim,
-            data_out_path=data_out_path,
+    run_parallel = True
+
+    if run_parallel:
+        ### Run parallel ###
+        Parallel(n_jobs=num_cores, backend="multiprocessing")(
+            delayed(simulate_data)(
+                i_scenario=i_scenario,
+                i_sim=i_sim,
+                data_out_path=data_out_path,
+            )
+            for i_scenario, i_sim in itertools.product(
+                scenario_vec, range(n_sim)
+            )
         )
-        for i_scenario, i_sim in itertools.product(scenario_vec, range(n_sim))
-    )
+    else:
+        ### Run sequential ###
+        for i_scenario in scenario_vec:
+            for i_sim in range(n_sim):
+                simulate_data(
+                    i_scenario=i_scenario,
+                    i_sim=i_sim,
+                    data_out_path=data_out_path,
+                )

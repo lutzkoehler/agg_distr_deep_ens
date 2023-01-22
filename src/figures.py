@@ -83,7 +83,7 @@ def plot_example_aggregation():
         )
 
     # Name of PDF
-    filename = os.path.join(pdf_path, "aggregation_methods.pdf")
+    filename = os.path.join(plot_path, "aggregation_methods.pdf")
 
     fig, axes = plt.subplots(1, 3, figsize=(20, 5))
 
@@ -180,21 +180,20 @@ def plot_example_aggregation():
 
 
 def plot_panel_model():
-    ### Simulation: Load data ###
-    with open(os.path.join(data_path, "eval_ss.pkl"), "rb") as f:
-        df_scores = pickle.load(f)
-
-    ### Simulation: Initialize ###
-
     ### Simulation: Score panel ###
     # Vector of scores/quantiles to plot
     score_vec = ["crps", "crpss", "me", "lgt", "cov", "a", "w"]
 
     # For-Loop over scenarios
-    for i_scenario in scenario_vec:
+    for dataset in dataset_ls:
+        ### Simulation: Load data ###
+        temp_data_path = data_path.replace("dataset", dataset)
+        with open(os.path.join(temp_data_path, "eval.pkl"), "rb") as f:
+            df_scores = pickle.load(f)
+
         ### Initialization ###
         # Only scenario
-        df_sc = df_scores[df_scores["model"] == i_scenario]
+        df_sc = df_scores[df_scores["model"] == dataset]
 
         ### Calculate quantities ###
         df_plot = pd.DataFrame()
@@ -388,7 +387,7 @@ def plot_panel_model():
             ncol=len(score_labels),
         )
         fig.suptitle(
-            f"{ens_method} - Model {i_scenario}"
+            f"{ens_method} - Model {dataset}"
             f" (n_sim {n_sim}, n_ens {n_ens})"
             f"\n {nn_deep_arch_str}"
         )
@@ -396,23 +395,22 @@ def plot_panel_model():
             ax.legend().set_visible(False)
 
         # Save fig
-        filename = os.path.join(
-            pdf_path, f"ss_gg_panel_model_{i_scenario}.pdf"
-        )
+        filename = os.path.join(plot_path, f"ss_gg_panel_model_{dataset}.pdf")
         fig.savefig(filename)
         print(f"Panel saved to {filename}")
 
 
 def plot_panel_boxplot():
     ### Simulation: CRPSS boxplot panel ###
-    ### Simulation: Load data ###
-    with open(os.path.join(data_path, "eval_ss.pkl"), "rb") as f:
-        df_scores = pickle.load(f)
     # For-Loop over scenarios
-    for i_scenario in scenario_vec:
+    for dataset in dataset_ls:
+        ### Simulation: Load data ###
+        temp_data_path = data_path.replace("dataset", dataset)
+        with open(os.path.join(temp_data_path, "eval.pkl"), "rb") as f:
+            df_scores = pickle.load(f)
         ### Initialization ###
         # Only scenario
-        df_sc = df_scores[df_scores["model"] == i_scenario]
+        df_sc = df_scores[df_scores["model"] == dataset]
 
         ### Calculate quantities ###
         df_plot = pd.DataFrame()
@@ -464,7 +462,7 @@ def plot_panel_boxplot():
         )
         sample_size = len(df_plot["crpss"].iloc[0])
         fig.suptitle(
-            f"{ens_method} - Model {i_scenario} - Sample size: {sample_size}"
+            f"{ens_method} - Model {dataset} - Sample size: {sample_size}"
             f"\n {nn_deep_arch_str}"
         )
 
@@ -496,7 +494,7 @@ def plot_panel_boxplot():
 
         # Save fig
         filename = os.path.join(
-            pdf_path, f"ss_gg_panel_crpss_boxplots_model_{i_scenario}.pdf"
+            plot_path, f"ss_gg_panel_crpss_boxplots_model_{dataset}.pdf"
         )
         fig.savefig(filename)
         print(f"CRPSS boxplots saved to {filename}")
@@ -504,9 +502,6 @@ def plot_panel_boxplot():
 
 def plot_pit_ens():
     ### Simulation: PIT histograms ###
-    ### Simulation: Load data ###
-    with open(os.path.join(data_path, "eval_ss.pkl"), "rb") as f:
-        df_scores = pickle.load(f)
 
     # Network ensemble size
     n_ens = 2
@@ -515,10 +510,14 @@ def plot_pit_ens():
     n_bins = 21
 
     # For-Loop over scenarios
-    for i_scenario in scenario_vec:
+    for dataset in dataset_ls:
+        ### Simulation: Load data ###
+        temp_data_path = data_path.replace("dataset", dataset)
+        with open(os.path.join(temp_data_path, "eval.pkl"), "rb") as f:
+            df_scores = pickle.load(f)
         ### Initialization ###
         # Only scenario
-        df_sc = df_scores[df_scores["model"] == i_scenario]
+        df_sc = df_scores[df_scores["model"] == dataset]
 
         # Index vector for validation and testing
         i_valid = list(range(df_sc[df_sc["type"] != "ref"]["n_valid"].iloc[0]))
@@ -543,9 +542,14 @@ def plot_pit_ens():
             for i_rep in range(n_ens):
                 for i_sim in range(n_sim):
                     # Load ensemble member
-                    filename = f"{temp_nn}_scen_{i_scenario}_sim_{i_sim}_ens_{i_rep}.pkl"  # noqa: E501
+                    filename = (
+                        f"{temp_nn}_sim_{i_sim}_ens_{i_rep}.pkl"  # noqa: E501
+                    )
+                    temp_data_ens_path = data_ens_path.replace(
+                        "dataset", dataset
+                    )
                     with open(
-                        os.path.join(data_ss_ens_path, filename), "rb"
+                        os.path.join(temp_data_ens_path, filename), "rb"
                     ) as f:
                         [pred_nn, y_valid, y_test] = pickle.load(f)
 
@@ -564,9 +568,12 @@ def plot_pit_ens():
                 # For-Loop over simulations
                 for i_sim in range(n_sim):
                     # Load aggregated forecasts
-                    filename = f"{temp_nn}_scen_{i_scenario}_sim_{i_sim}_{temp_agg}_ens_{n_ens}.pkl"  # noqa: E501
+                    filename = f"{temp_nn}_sim_{i_sim}_{temp_agg}_ens_{n_ens}.pkl"  # noqa: E501
+                    temp_data_agg_path = data_agg_path.replace(
+                        "dataset", dataset
+                    )
                     with open(
-                        os.path.join(data_ss_agg_path, filename), "rb"
+                        os.path.join(temp_data_agg_path, filename), "rb"
                     ) as f:
                         pred_agg = pickle.load(f)
 
@@ -624,7 +631,7 @@ def plot_pit_ens():
             squeeze=False,
         )
         fig.suptitle(
-            f"{ens_method} - Model {i_scenario}"
+            f"{ens_method} - Model {dataset}"
             f" (n_sim {n_sim}, n_ens {n_ens})"
             f"\n {nn_deep_arch_str}"
         )
@@ -654,7 +661,7 @@ def plot_pit_ens():
 
         # Save fig
         filename = os.path.join(
-            pdf_path, f"ss_gg_pit_ens_model_{i_scenario}.pdf"
+            plot_path, f"ss_gg_pit_ens_model_{dataset}.pdf"
         )
         fig.savefig(filename)
         print(f"PIT saved to {filename}")
@@ -674,16 +681,19 @@ def plot_ensemble_members():
     idx = 0
 
     ### Collect ensemble member data ###
-    for i_scenario in scenario_vec:
+    for dataset in dataset_ls:
         for temp_nn in nn_vec:
             for i_sim in range(n_sim):
                 for i_ens in range(n_ens):
                     # Load ensemble member
                     filename = os.path.join(
-                        f"{temp_nn}_scen_{i_scenario}_sim_{i_sim}_ens_{i_ens}.pkl",  # noqa: E501
+                        f"{temp_nn}_sim_{i_sim}_ens_{i_ens}.pkl",  # noqa: E501
+                    )
+                    temp_data_ens_path = data_ens_path.replace(
+                        "dataset", dataset
                     )
                     with open(
-                        os.path.join(data_ss_ens_path, filename), "rb"
+                        os.path.join(temp_data_ens_path, filename), "rb"
                     ) as f:
                         pred_nn, y_valid, y_test = pickle.load(
                             f
@@ -693,7 +703,7 @@ def plot_ensemble_members():
                     i_test = [x + len(y_valid) for x in range(len(y_test))]
 
                     new_row = {
-                        "model": i_scenario,
+                        "model": dataset,
                         "nn": temp_nn,
                         "n_sim": i_sim,
                         "n_ens": i_ens,
@@ -726,20 +736,23 @@ def plot_ensemble_members():
                     )
 
     ### Collect aggregated data ###
-    for i_scenario in scenario_vec:
+    for dataset in dataset_ls:
         for temp_nn in nn_vec:
             for i_sim in range(n_sim):
                 for i_ens in range(n_ens):
                     for temp_agg in agg_meths:
-                        filename = f"{temp_nn}_scen_{i_scenario}_sim_{i_sim}_{temp_agg}_ens_{n_ens}.pkl"  # noqa: E501
+                        filename = f"{temp_nn}_sim_{i_sim}_{temp_agg}_ens_{n_ens}.pkl"  # noqa: E501
+                        temp_data_agg_path = data_agg_path.replace(
+                            "dataset", dataset
+                        )
                         with open(
-                            os.path.join(data_ss_agg_path, filename),
+                            os.path.join(temp_data_agg_path, filename),
                             "rb",
                         ) as f:
                             pred_agg = pickle.load(f)
 
                         new_row = {
-                            "model": i_scenario,
+                            "model": dataset,
                             "nn": temp_nn,
                             "n_sim": i_sim,
                             "n_ens": i_ens,
@@ -773,14 +786,6 @@ def plot_ensemble_members():
                             ignore_index=True,
                         )
 
-    with open(os.path.join(data_path, "eval_ss.pkl"), "rb") as f:
-        df_scores = pickle.load(f)
-
-    df_ens = df_scores[df_scores["type"] == "ind"]
-    df_agg = df_scores[
-        (df_scores["type"] != "ref") & (df_scores["type"] != "ind")
-    ]
-
     # Make plot
     fig, axes = plt.subplots(
         4,
@@ -788,13 +793,20 @@ def plot_ensemble_members():
         figsize=(15, 15),
         squeeze=False,
     )
-    for i_scenario in scenario_vec:
+    for dataset in dataset_ls:
+        temp_data_path = data_path.replace("dataset", dataset)
+        with open(os.path.join(temp_data_path, "eval.pkl"), "rb") as f:
+            df_scores = pickle.load(f)
+        df_ens = df_scores[df_scores["type"] == "ind"]
+        df_agg = df_scores[
+            (df_scores["type"] != "ref") & (df_scores["type"] != "ind")
+        ]
         for idx, temp_nn in enumerate(nn_vec):
             df_ens_temp = df_ens[
-                (df_ens["nn"] == temp_nn) & (df_ens["model"] == i_scenario)
+                (df_ens["nn"] == temp_nn) & (df_ens["model"] == dataset)
             ]
             df_agg_temp = df_agg[
-                (df_agg["nn"] == temp_nn) & (df_agg["model"] == i_scenario)
+                (df_agg["nn"] == temp_nn) & (df_agg["model"] == dataset)
             ]
             sns.boxplot(
                 x=df_ens_temp["n_sim"],
@@ -849,14 +861,14 @@ def plot_ensemble_members():
         # for ax in axes.flatten():  # type: ignore
         #     ax.legend().set_visible(False)
         fig.suptitle(
-            f"Model {i_scenario} - CRPS and predicted quantile functions"
+            f"Model {dataset} - CRPS and predicted quantile functions"
             f" (n_sim {n_sim}, n_ens {n_ens})"
             f"\n {nn_deep_arch_str}"
         )
 
         # Save fig
         filename = os.path.join(
-            pdf_path, f"ss_ensemble_member_model_{i_scenario}.pdf"
+            plot_path, f"ss_ensemble_member_model_{dataset}.pdf"
         )
         fig.savefig(filename)
         print(f"Ensemble members saved to {filename}")
@@ -869,27 +881,36 @@ with open("src/config.json", "rb") as f:
 ens_method = CONFIG["ENS_METHOD"]
 
 # Path for figures
-pdf_path = os.path.join(CONFIG["PATHS"]["PLOTS_DIR"], ens_method)
+plot_path = os.path.join(CONFIG["PATHS"]["PLOTS_DIR"], ens_method)
 
 # Path of data
-data_path = os.path.join(CONFIG["PATHS"]["DATA_DIR"], ens_method)
+data_path = os.path.join(
+    CONFIG["PATHS"]["DATA_DIR"],
+    CONFIG["PATHS"]["RESULTS_DIR"],
+    "dataset",
+    ens_method,
+)
 
 # Path of network ensemble data
-data_ss_ens_path = os.path.join(
+data_ens_path = os.path.join(
     CONFIG["PATHS"]["DATA_DIR"],
+    CONFIG["PATHS"]["RESULTS_DIR"],
+    "dataset",
     ens_method,
     CONFIG["PATHS"]["ENSEMBLE_F"],
 )
 
 # Path of aggregated network data
-data_ss_agg_path = os.path.join(
+data_agg_path = os.path.join(
     CONFIG["PATHS"]["DATA_DIR"],
+    CONFIG["PATHS"]["RESULTS_DIR"],
+    "dataset",
     ens_method,
     CONFIG["PATHS"]["AGG_F"],
 )
 
 # Models considered
-scenario_vec = CONFIG["PARAMS"]["SCENARIO_VEC"]
+dataset_ls = CONFIG["DATASET"]
 
 # Number of simulations
 n_sim = CONFIG["PARAMS"]["N_SIM"]

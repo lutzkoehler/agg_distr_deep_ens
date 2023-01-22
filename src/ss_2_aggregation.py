@@ -6,7 +6,6 @@ import json
 import os
 import pickle
 from functools import partial
-from itertools import product
 
 # from multiprocessing.pool import Pool
 from time import time_ns
@@ -131,16 +130,16 @@ def fn_apply_bqn(i, n_ens, **kwargs):
 
 ### Parallel-Function ###
 def fn_mc(
-    i_nn: int, i_scenario: int, n_ens: int, i_sim: int, **kwargs
+    temp_nn: str, dataset: str, n_ens: int, i_sim: int, **kwargs
 ) -> None:
     """Function for parallel computing
 
     Parameters
     ----------
-    i_nn : integer
-        Network type indicator
-    i_scenario : integer
-        Scenario
+    temp_nn : str
+        Network type
+    dataset : str
+        Name of dataset
     n_ens : integer
         Size of network ensemble
     i_sim : integer
@@ -163,9 +162,6 @@ def fn_mc(
         "np_cv_rules": default_converter + numpy2ri.converter,
     }
 
-    # Read out network type
-    temp_nn = kwargs["nn_vec"][i_nn]
-
     # Get aggregation methods
     agg_meths = kwargs["agg_meths_ls"][temp_nn]
 
@@ -178,7 +174,7 @@ def fn_mc(
     y_test = []
     for i_ens in range(n_ens):
         # Load ensemble member
-        filename = f"{temp_nn}_scen_{i_scenario}_sim_{i_sim}_ens_{i_ens}.pkl"
+        filename = f"{temp_nn}_sim_{i_sim}_ens_{i_ens}.pkl"
         temp_data_in_path = os.path.join(kwargs["data_in_path"], filename)
         with open(temp_data_in_path, "rb") as f:
             pred_nn, y_valid, y_test = pickle.load(f)
@@ -593,15 +589,18 @@ def fn_mc(
         end_time = time_ns()
 
         # Name of file
-        filename = f"{temp_nn}_scen_{i_scenario}_sim_{i_sim}_{temp_agg}_ens_{n_ens}.pkl"  # noqa: E501
+        filename = (
+            f"{temp_nn}_sim_{i_sim}_{temp_agg}_ens_{n_ens}.pkl"  # noqa: E501
+        )
         temp_data_out_path = os.path.join(kwargs["data_out_path"], filename)
         # Save aggregated forecasts and scores
         with open(temp_data_out_path, "wb") as f:
             pickle.dump(pred_agg, f)
 
         print(
-            f"{temp_nn.upper()}: Finished aggregation of {filename}"
-            f" - {(end_time - start_time)/1e+9}s",
+            f"{temp_nn.upper()}, {dataset.upper()}:",
+            f"Finished aggregation of {filename} -",
+            f"{(end_time - start_time)/1e+9:.2f}s",
         )
         # Delete and clean
         del pred_agg
@@ -620,21 +619,6 @@ def main():
     with open("src/config.json", "rb") as f:
         CONFIG = json.load(f)
 
-    ### Settings ###
-    # Path of deep ensemble forecasts
-    data_in_path = os.path.join(
-        CONFIG["PATHS"]["DATA_DIR"],
-        CONFIG["ENS_METHOD"],
-        CONFIG["PATHS"]["ENSEMBLE_F"],
-    )
-
-    # Path of aggregated forecasts
-    data_out_path = os.path.join(
-        CONFIG["PATHS"]["DATA_DIR"],
-        CONFIG["ENS_METHOD"],
-        CONFIG["PATHS"]["AGG_F"],
-    )
-
     ### Initialize ###
     # Cores to use
     num_cores = CONFIG["NUM_CORES"]
@@ -643,21 +627,10 @@ def main():
     nn_vec = CONFIG["PARAMS"]["NN_VEC"]
 
     # Aggregation methods
-    # lp -> Linear pool
-    # vi -> Vincentization
-    # vi-w -> Vincentization with weight estimation
-    # vi-a -> Vincentization with intercept estimation
-    # vi-aw -> Vincentization with weight and intercept estimation
     agg_meths_ls = CONFIG["PARAMS"]["AGG_METHS_LS"]
-    # agg_meths_ls = {
-    #     "drn": ["lp", "vi", "vi-w", "vi-a", "vi-aw"],
-    #     "bqn": ["lp", "vi", "vi-w", "vi-a", "vi-aw"],
-    #     # "drn": ["lp"],
-    #     # "bqn": ["lp"],
-    # }
 
     # Models considered
-    scenario_vec = CONFIG["PARAMS"]["SCENARIO_VEC"]
+    dataset_ls = CONFIG["DATASET"]
 
     # Number of simulations
     n_sim = CONFIG["PARAMS"]["N_SIM"]
@@ -685,61 +658,86 @@ def main():
 
     ### Initialize parallel computing ###
     # Grid for parallel computing
-    grid_par = pd.DataFrame(
-        list(
-            product(
-                range(len(nn_vec)),
-                scenario_vec,
-                np.sort(n_ens_vec)[::-1],
-                range(n_sim),
-            )
-        ),
-        columns=["nn_vec", "scenario_vec", "n_ens_vec", "n_sim"],
-    )
+    run_grid = pd.DataFrame(columns=["dataset", "temp_nn", "n_ens", "i_sim"])
+    for dataset in dataset_ls:
+        data_in_path = os.path.join(
+            CONFIG["PATHS"]["DATA_DIR"],
+            CONFIG["PATHS"]["RESULTS_DIR"],
+            dataset,
+            CONFIG["ENS_METHOD"],
+            CONFIG["PATHS"]["ENSEMBLE_F"],
+        )
+        data_out_path = os.path.join(
+            CONFIG["PATHS"]["DATA_DIR"],
+            CONFIG["PATHS"]["RESULTS_DIR"],
+            dataset,
+            CONFIG["ENS_METHOD"],
+            CONFIG["PATHS"]["AGG_F"],
+        )
+        if dataset.startswith("scen"):
+            temp_n_sim = n_sim
+        else:
+            temp_n_sim = 20
+        for temp_nn in nn_vec:
+            for i_ens in n_ens_vec[::-1]:
+                for i_sim in range(temp_n_sim):
+                    new_row = {
+                        "dataset": dataset,
+                        "temp_nn": temp_nn,
+                        "n_ens": i_ens,
+                        "i_sim": i_sim,
+                        "data_in_path": data_in_path,
+                        "data_out_path": data_out_path,
+                    }
+
+                    run_grid = pd.concat(
+                        [run_grid, pd.DataFrame(new_row, index=[0])],
+                        ignore_index=True,
+                    )
 
     ### Parallel-Loop ###
     # Maximum number of cores
-    num_cores = min(num_cores, grid_par.shape[0])
+    num_cores = min(num_cores, run_grid.shape[0])
 
     # Take time
     total_start_time = time_ns()
 
     # Run sequential or run parallel
-    run_parallel = False
+    run_parallel = True
 
-    print(grid_par.shape[0])
+    print(run_grid.shape[0])
     if run_parallel:
         ### Run parallel ###
         Parallel(n_jobs=num_cores, backend="multiprocessing")(
             delayed(fn_mc)(
-                i_nn=row["nn_vec"],
-                i_scenario=row["scenario_vec"],
-                n_ens=row["n_ens_vec"],
-                i_sim=row["n_sim"],
+                temp_nn=row["temp_nn"],
+                dataset=row["dataset"],
+                n_ens=row["n_ens"],
+                i_sim=row["i_sim"],
                 q_levels=q_levels,
                 nn_vec=nn_vec,
                 agg_meths_ls=agg_meths_ls,
-                data_in_path=data_in_path,
-                data_out_path=data_out_path,
+                data_in_path=row["data_in_path"],
+                data_out_path=row["data_out_path"],
                 n_lp_samples=n_lp_samples,
                 n_q_samples=n_q_samples,
                 num_cores=int(num_cores / 2),
             )
-            for _, row in grid_par.iterrows()
+            for _, row in run_grid.iterrows()
         )
     else:
         ### Run sequential ###
-        for _, row in grid_par.iterrows():
+        for _, row in run_grid.iterrows():
             fn_mc(
-                i_nn=row["nn_vec"],
-                i_scenario=row["scenario_vec"],
-                n_ens=row["n_ens_vec"],
-                i_sim=row["n_sim"],
+                temp_nn=row["temp_nn"],
+                dataset=row["dataset"],
+                n_ens=row["n_ens"],
+                i_sim=row["i_sim"],
                 q_levels=q_levels,
                 nn_vec=nn_vec,
                 agg_meths_ls=agg_meths_ls,
-                data_in_path=data_in_path,
-                data_out_path=data_out_path,
+                data_in_path=row["data_in_path"],
+                data_out_path=row["data_out_path"],
                 n_lp_samples=n_lp_samples,
                 n_q_samples=n_q_samples,
                 num_cores=num_cores,
@@ -750,8 +748,8 @@ def main():
 
     # Print processing time
     print(
-        f"Finished processing of all threads "
-        f"within {(total_end_time - total_start_time) / 1e+9}s"
+        "Finished processing of all threads within",
+        f"{(total_end_time - total_start_time) / 1e+9:.2f}s",
     )
 
 
