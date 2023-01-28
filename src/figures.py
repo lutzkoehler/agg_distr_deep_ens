@@ -12,6 +12,22 @@ import seaborn as sns
 
 
 def plot_example_aggregation():
+    ### Get CONFIG information ###
+    (
+        _,
+        plot_path,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+    ) = _get_config_info()
+
     ### Section 2: Example aggregation ###
     # Evaluations for plotting
     n_plot = 1_000
@@ -180,6 +196,21 @@ def plot_example_aggregation():
 
 
 def plot_panel_model():
+    ### Get CONFIG information ###
+    (
+        ens_method,
+        plot_path,
+        data_path,
+        data_ens_path,
+        data_agg_path,
+        dataset_ls,
+        n_sim,
+        n_ens,
+        n_ens_vec,
+        nn_deep_arch,
+        nn_deep_arch_str,
+        nn_vec,
+    ) = _get_config_info()
     ### Simulation: Score panel ###
     # Vector of scores/quantiles to plot
     score_vec = ["crps", "crpss", "me", "lgt", "cov", "a", "w"]
@@ -190,6 +221,12 @@ def plot_panel_model():
         temp_data_path = data_path.replace("dataset", dataset)
         with open(os.path.join(temp_data_path, "eval.pkl"), "rb") as f:
             df_scores = pickle.load(f)
+
+        # Check dataset is simulated or UCI Dataset
+        if dataset.startswith("scen"):
+            optimal_scores_available = True
+        else:
+            optimal_scores_available = False
 
         ### Initialization ###
         # Only scenario
@@ -208,7 +245,7 @@ def plot_panel_model():
 
             # Get optimal score of scenario for CRPSS
             s_opt = 0
-            if temp_sr not in ["a", "w"]:
+            if optimal_scores_available and (temp_sr not in ["a", "w"]):
                 s_opt = df_sc[df_sc["type"] == "ref"][temp_out].mean()
 
             # For-Loop over network variants
@@ -343,6 +380,9 @@ def plot_panel_model():
             squeeze=False,  # Always return 2d array even if only 1d
         )
 
+        if not optimal_scores_available:
+            df_plot = df_plot[df_plot["agg"] != "opt"]
+
         # For-Loop over networks
         for i, temp_nn in enumerate([x.upper() for x in nn_vec]):
             if any(
@@ -395,15 +435,35 @@ def plot_panel_model():
             ax.legend().set_visible(False)
 
         # Save fig
-        filename = os.path.join(plot_path, f"ss_gg_panel_model_{dataset}.pdf")
+        filename = os.path.join(plot_path, f"{dataset}_panel.pdf")
         fig.savefig(filename)
         print(f"Panel saved to {filename}")
 
 
 def plot_panel_boxplot():
+    ### Get CONFIG information ###
+    (
+        ens_method,
+        plot_path,
+        data_path,
+        data_ens_path,
+        data_agg_path,
+        dataset_ls,
+        n_sim,
+        n_ens,
+        n_ens_vec,
+        nn_deep_arch,
+        nn_deep_arch_str,
+        nn_vec,
+    ) = _get_config_info()
+
     ### Simulation: CRPSS boxplot panel ###
     # For-Loop over scenarios
     for dataset in dataset_ls:
+        # Check if skill is available for dataset
+        if not dataset.startswith("scen"):
+            return
+
         ### Simulation: Load data ###
         temp_data_path = data_path.replace("dataset", dataset)
         with open(os.path.join(temp_data_path, "eval.pkl"), "rb") as f:
@@ -493,16 +553,29 @@ def plot_panel_boxplot():
                     axes[i][j].set_ylabel("")
 
         # Save fig
-        filename = os.path.join(
-            plot_path, f"ss_gg_panel_crpss_boxplots_model_{dataset}.pdf"
-        )
+        filename = os.path.join(plot_path, f"{dataset}_crpss_boxplots.pdf")
         fig.savefig(filename)
         print(f"CRPSS boxplots saved to {filename}")
 
 
 def plot_pit_ens():
-    ### Simulation: PIT histograms ###
+    ### Get CONFIG information ###
+    (
+        ens_method,
+        plot_path,
+        data_path,
+        data_ens_path,
+        data_agg_path,
+        dataset_ls,
+        n_sim,
+        n_ens,
+        n_ens_vec,
+        nn_deep_arch,
+        nn_deep_arch_str,
+        nn_vec,
+    ) = _get_config_info()
 
+    ### Simulation: PIT histograms ###
     # Network ensemble size
     n_ens = 2
 
@@ -660,14 +733,28 @@ def plot_pit_ens():
                     axes[i][j].set_ylabel(temp_nn)
 
         # Save fig
-        filename = os.path.join(
-            plot_path, f"ss_gg_pit_ens_model_{dataset}.pdf"
-        )
+        filename = os.path.join(plot_path, f"{dataset}_pit_ens.pdf")
         fig.savefig(filename)
         print(f"PIT saved to {filename}")
 
 
 def plot_ensemble_members():
+    ### Get CONFIG information ###
+    (
+        ens_method,
+        plot_path,
+        data_path,
+        data_ens_path,
+        data_agg_path,
+        dataset_ls,
+        n_sim,
+        n_ens,
+        n_ens_vec,
+        nn_deep_arch,
+        nn_deep_arch_str,
+        nn_vec,
+    ) = _get_config_info()
+
     ### Plot CRPS and quantile function of ensemble members
     # Prepare quantile calculation
     # Size of quantile samples
@@ -867,67 +954,85 @@ def plot_ensemble_members():
         )
 
         # Save fig
-        filename = os.path.join(
-            plot_path, f"ss_ensemble_member_model_{dataset}.pdf"
-        )
+        filename = os.path.join(plot_path, f"{dataset}_ensemble_members.pdf")
         fig.savefig(filename)
         print(f"Ensemble members saved to {filename}")
 
 
-### Define globals ###
-### Get Config ###
-with open("src/config.json", "rb") as f:
-    CONFIG = json.load(f)
-ens_method = CONFIG["ENS_METHOD"]
+def _get_config_info():
+    ### Define globals ###
+    ### Get Config ###
+    with open("src/config.json", "rb") as f:
+        CONFIG = json.load(f)
+    ens_method = CONFIG["ENS_METHOD"]
 
-# Path for figures
-plot_path = os.path.join(CONFIG["PATHS"]["PLOTS_DIR"], ens_method)
+    # Path for figures
+    plot_path = os.path.join(CONFIG["PATHS"]["PLOTS_DIR"], ens_method)
 
-# Path of data
-data_path = os.path.join(
-    CONFIG["PATHS"]["DATA_DIR"],
-    CONFIG["PATHS"]["RESULTS_DIR"],
-    "dataset",
-    ens_method,
-)
+    # Path of data
+    data_path = os.path.join(
+        CONFIG["PATHS"]["DATA_DIR"],
+        CONFIG["PATHS"]["RESULTS_DIR"],
+        "dataset",
+        ens_method,
+    )
 
-# Path of network ensemble data
-data_ens_path = os.path.join(
-    CONFIG["PATHS"]["DATA_DIR"],
-    CONFIG["PATHS"]["RESULTS_DIR"],
-    "dataset",
-    ens_method,
-    CONFIG["PATHS"]["ENSEMBLE_F"],
-)
+    # Path of network ensemble data
+    data_ens_path = os.path.join(
+        CONFIG["PATHS"]["DATA_DIR"],
+        CONFIG["PATHS"]["RESULTS_DIR"],
+        "dataset",
+        ens_method,
+        CONFIG["PATHS"]["ENSEMBLE_F"],
+    )
 
-# Path of aggregated network data
-data_agg_path = os.path.join(
-    CONFIG["PATHS"]["DATA_DIR"],
-    CONFIG["PATHS"]["RESULTS_DIR"],
-    "dataset",
-    ens_method,
-    CONFIG["PATHS"]["AGG_F"],
-)
+    # Path of aggregated network data
+    data_agg_path = os.path.join(
+        CONFIG["PATHS"]["DATA_DIR"],
+        CONFIG["PATHS"]["RESULTS_DIR"],
+        "dataset",
+        ens_method,
+        CONFIG["PATHS"]["AGG_F"],
+    )
 
-# Models considered
-dataset_ls = CONFIG["DATASET"]
+    # Models considered
+    dataset_ls = CONFIG["DATASET"]
 
-# Number of simulations
-n_sim = CONFIG["PARAMS"]["N_SIM"]
+    # Number of simulations
+    n_sim = CONFIG["PARAMS"]["N_SIM"]
 
-# Ensemble size
-n_ens = CONFIG["PARAMS"]["N_ENS"]
-# Vector of ensemble members
-step_size = 2
-n_ens_vec = np.arange(start=step_size, stop=n_ens + step_size, step=step_size)
+    # Ensemble size
+    n_ens = CONFIG["PARAMS"]["N_ENS"]
+    # Vector of ensemble members
+    step_size = 2
+    n_ens_vec = np.arange(
+        start=step_size, stop=n_ens + step_size, step=step_size
+    )
 
-# Network architecture
-nn_deep_arch = CONFIG["NN_DEEP_ARCH"]
-nn_deep_arch_str = [
-    f"{arch_i}: {layer[0]}{layer[1]}"
-    for arch_i in range(len(nn_deep_arch))
-    for layer in nn_deep_arch[arch_i]
-]
+    # Network architecture
+    nn_deep_arch = CONFIG["NN_DEEP_ARCH"]
+    nn_deep_arch_str = [
+        f"{arch_i}: {layer[0]}{layer[1]}"
+        for arch_i in range(len(nn_deep_arch))
+        for layer in nn_deep_arch[arch_i]
+    ]
+    nn_vec = CONFIG["PARAMS"]["NN_VEC"]
+
+    return (
+        ens_method,
+        plot_path,
+        data_path,
+        data_ens_path,
+        data_agg_path,
+        dataset_ls,
+        n_sim,
+        n_ens,
+        n_ens_vec,
+        nn_deep_arch,
+        nn_deep_arch_str,
+        nn_vec,
+    )
+
 
 # nn_deep_arch =
 ### Initialize ###
@@ -942,7 +1047,6 @@ sr_eval = ["crps", "me", "lgt", "cov"]
 sr_skill = ["crps"]
 
 # Network types
-nn_vec = CONFIG["PARAMS"]["NN_VEC"]
 
 # Names of aggregation methods
 agg_names = {

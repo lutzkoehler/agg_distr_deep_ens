@@ -6,7 +6,6 @@ import json
 import os
 import pickle
 from functools import partial
-
 # from multiprocessing.pool import Pool
 from time import time_ns
 
@@ -598,7 +597,7 @@ def fn_mc(
             pickle.dump(pred_agg, f)
 
         print(
-            f"{temp_nn.upper()}, {dataset.upper()}:",
+            f"{dataset.upper()}, {temp_nn.upper()}:",
             f"Finished aggregation of {filename} -",
             f"{(end_time - start_time)/1e+9:.2f}s",
         )

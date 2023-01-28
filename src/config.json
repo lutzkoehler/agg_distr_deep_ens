@@ -1,6 +1,6 @@
 {
     "DATASET": [
-        "scen_1"
+        "kin8nm"
     ],
     "_available_DATASET": [
         "scen_1",
@@ -8,16 +8,23 @@
         "scen_3",
         "scen_4",
         "scen_5",
-        "scen_6"
+        "scen_6",
+        "boston",
+        "concrete",
+        "energy",
+        "kin8nm",
+        "naval",
+        "power",
+        "protein"
     ],
     "ENS_METHOD": "rand_init",
     "_available_ENS_METHOD": [
+        "rand_init",
         "bagging",
         "mc_dropout",
         "dropconnect",
         "variational_dropout",
         "concrete_dropout",
-        "rand_init",
         "bayesian",
         "batchensemble"
     ],
@@ -81,7 +88,8 @@
     },
     "PARAMS": {
         "NN_VEC": [
-            "drn"
+            "drn",
+            "bqn"
         ],
         "_available_NN_VEC": [
             "drn",

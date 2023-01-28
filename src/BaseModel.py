@@ -23,17 +23,14 @@ class BaseModel(ABC):
         self.hpar = {}
         self.model: Model
         self.runtime_est = 0
-        self.training = False
         self.p_dropout = None
-        if "training" in kwargs.keys():
-            self.training = kwargs["training"]
 
     @abstractmethod
-    def _get_architecture(self, input_length: int, training: bool) -> Model:
+    def _get_architecture(self, n_samples: int, n_features: int) -> Model:
         pass
 
     @abstractmethod
-    def _build(self, input_length: int) -> Model:
+    def _build(self, n_samples: int, n_features: int) -> Model:
         pass
 
     @abstractmethod

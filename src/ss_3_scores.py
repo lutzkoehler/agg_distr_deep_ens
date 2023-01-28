@@ -111,13 +111,22 @@ def main():
 
     # For-Loop over scenarios and simulations
     for dataset in dataset_ls:
+
+        # Check if scenario or UCI dataset
+        if dataset.startswith("scen"):
+            temp_n_sim = n_sim
+            optimal_score_available = True
+        else:
+            temp_n_sim = 20
+            optimal_score_available = False
+
         # For-Loop over network types
         for temp_nn in nn_vec:
             agg_meths = agg_meths_ls[temp_nn]
 
-            for i_sim in range(n_sim):
+            for i_sim in range(temp_n_sim):
                 ### Calculate optimal scores based on data generation ###
-                if temp_nn == nn_vec[0]:
+                if (temp_nn == nn_vec[0]) and optimal_score_available:
                     # Load data
                     filename = f"sim_{i_sim}.pkl"
                     temp_data_raw_path = data_raw_path.replace(
@@ -318,32 +327,34 @@ def main():
                                     pred_agg["scores"][temp_sr]
                                 )
 
-                        # For-Loop over skill scores
-                        for temp_sr in sr_skill:
-                            # Reference is given by mean score of network
-                            # ensemble members
-                            s_ref = df_scores[
-                                (df_scores["model"] == dataset)
-                                & (df_scores["n_sim"] == i_sim)
-                                & (df_scores["nn"] == temp_nn)
-                                & (df_scores["type"] == "ind")
-                                & (df_scores["n_rep"] <= i_ens)
-                            ][temp_sr].mean()
+                        # Calculate skill scores if optimal score is available
+                        if optimal_score_available:
+                            # For-Loop over skill scores
+                            for temp_sr in sr_skill:
+                                # Reference is given by mean score of network
+                                # ensemble members
+                                s_ref = df_scores[
+                                    (df_scores["model"] == dataset)
+                                    & (df_scores["n_sim"] == i_sim)
+                                    & (df_scores["nn"] == temp_nn)
+                                    & (df_scores["type"] == "ind")
+                                    & (df_scores["n_rep"] <= i_ens)
+                                ][temp_sr].mean()
 
-                            # Score of optimal forecast
-                            s_opt = df_scores[
-                                (df_scores["model"] == dataset)
-                                & (df_scores["n_sim"] == i_sim)
-                                & (df_scores["nn"] == "ref")
-                            ][temp_sr]
+                                # Score of optimal forecast
+                                s_opt = df_scores[
+                                    (df_scores["model"] == dataset)
+                                    & (df_scores["n_sim"] == i_sim)
+                                    & (df_scores["nn"] == "ref")
+                                ][temp_sr]
 
-                            if s_ref == np.Inf:
-                                print(temp_nn)
-                            # Calculate skill
-                            temp_entry = (s_ref - new_row[temp_sr]) / (
-                                s_ref - s_opt
-                            )
-                            new_row[f"{temp_sr}s"] = temp_entry.iloc[0]
+                                if s_ref == np.Inf:
+                                    print(temp_nn)
+                                # Calculate skill
+                                temp_entry = (s_ref - new_row[temp_sr]) / (
+                                    s_ref - s_opt
+                                )
+                                new_row[f"{temp_sr}s"] = temp_entry.iloc[0]
 
                         # Append to data frame
                         df_scores = pd.concat(

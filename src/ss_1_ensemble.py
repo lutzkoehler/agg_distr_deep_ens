@@ -123,6 +123,38 @@ def run_ensemble_parallel_model(
             rpy_elements=rpy_elements,
         )
 
+        # For BatchEnsemble:
+        # If necessary, drop some observations to ensure correct batch size
+        # Constraints:
+        # 1. n_batch % n_ens = 0
+        # 2. n_batch_rest % n_ens = 0 for n_train and n_valid
+        if ens_method == "batchensemble":
+            n_batch = model.hpar["n_batch"]
+            # Resample missing datapoints: Train set
+            n_train_to_add = n_ens - (X_train.shape[0] % n_batch) % n_ens
+            train_indeces_to_add = np.random.choice(
+                range(X_train.shape[0]), size=n_train_to_add, replace=True
+            )
+            X_train = np.vstack([X_train, X_train[train_indeces_to_add, :]])
+            y_train = np.hstack([y_train, y_train[train_indeces_to_add]])
+            # Resample missing datapoints: Validation set
+            n_valid_to_add = n_ens - (X_valid.shape[0] % n_batch) % n_ens
+            valid_indeces_to_drop = np.random.choice(
+                range(X_valid.shape[0]), size=n_valid_to_add, replace=True
+            )
+            X_valid = np.vstack([X_valid, X_valid[valid_indeces_to_drop, :]])
+            y_valid = np.hstack([y_valid, y_valid[valid_indeces_to_drop]])
+            # Resample missing datapoints: Test set
+            # Test resampling not necessary as implicit ensemble will
+            # transformed to n_ens BatchEnsemble models each of n_ens = 1
+
+            total_samples_added = n_train_to_add + n_valid_to_add
+            print(
+                f"Added {total_samples_added} samples due to BatchEnsemble"
+                f" (train: {n_train_to_add},",
+                f"valid: {n_valid_to_add}",
+            )
+
         # Build model
         model.fit(
             X_train=X_train,
@@ -131,7 +163,7 @@ def run_ensemble_parallel_model(
             y_valid=y_valid,
         )
         print(
-            f"{temp_nn.upper()}, {dataset.upper()}: Finished training of",
+            f"{dataset.upper()}, {temp_nn.upper()}: Finished training of",
             f"{temp_nn}_sim_{i_sim}_ens_0.pkl",
             f"- {(model.runtime_est)/1e+9:.2f}s",
         )
@@ -280,7 +312,7 @@ def run_ensemble_single_model(
             y_valid=y_valid,
         )
         print(
-            f"{temp_nn.upper()}, {dataset.upper()}: Finished training of",
+            f"{dataset.upper()}, {temp_nn.upper()}: Finished training of",
             f"{temp_nn}_sim_{i_sim}_ens_0.pkl",
             f"- {(model.runtime_est)/1e+9:.2f}s",
         )
@@ -548,32 +580,70 @@ def train_valid_test_split(
     tuple
         Contains (X_train, y_train, X_valid, y_valid, X_test, y_test)
     """
-    # Load corresponding data
-    temp_data_in_path = os.path.join(data_in_path, f"sim_{i_sim}.pkl")
+    ### Simulated dataset ###
+    if dataset.startswith("scen"):
+        # Load corresponding data
+        temp_data_in_path = os.path.join(data_in_path, f"sim_{i_sim}.pkl")
 
-    with open(temp_data_in_path, "rb") as f:
-        (
-            X_train,  # n_train = 6_000
-            y_train,
-            X_test,  # n_test = 10_000
-            y_test,
-            _,
-            _,
-        ) = pickle.load(f)
+        with open(temp_data_in_path, "rb") as f:
+            (
+                X_train,  # n_train = 6_000
+                y_train,
+                X_test,  # n_test = 10_000
+                y_test,
+                _,
+                _,
+            ) = pickle.load(f)
 
-    # Indices of validation set
-    if dataset.endswith("6"):
-        i_valid = np.arange(start=2_500, stop=3_000, step=1)
+        # Indices of validation set
+        if dataset.endswith("6"):
+            i_valid = np.arange(start=2_500, stop=3_000, step=1)
+        else:
+            i_valid = np.arange(
+                start=5_000, stop=6_000, step=1
+            )  # n_valid = 1000 -> n_train = 5000
+
+        # Split X_train/y_train in train and validation set
+        X_valid = X_train[i_valid]  # length 1_000
+        y_valid: NDArray[Any, Float] = y_train[i_valid]
+        X_train = np.delete(arr=X_train, obj=i_valid, axis=0)  # length 5_000
+        y_train = np.delete(arr=y_train, obj=i_valid, axis=0)
+
+    ### UCI Dataset ###
+    # Code used from https://github.com/yaringal/DropoutUncertaintyExps
     else:
-        i_valid = np.arange(
-            start=5_000, stop=6_000, step=1
-        )  # n_valid = 1000 -> n_train = 5000
+        data = np.loadtxt(os.path.join(data_in_path, "data.txt"))
+        index_features = np.loadtxt(
+            os.path.join(data_in_path, "index_features.txt")
+        )
+        index_target = np.loadtxt(
+            os.path.join(data_in_path, "index_target.txt")
+        )
 
-    # Split X_train/y_train in train and validation set
-    X_valid = X_train[i_valid]  # length 1_000
-    y_valid: NDArray[Any, Float] = y_train[i_valid]
-    X_train = np.delete(arr=X_train, obj=i_valid, axis=0)  # length 5_000
-    y_train = np.delete(arr=y_train, obj=i_valid, axis=0)
+        # Separate features and target
+        X = data[:, [int(i) for i in index_features.tolist()]]
+        y = data[:, int(index_target.tolist())]
+
+        # Get train and test split (i_sim)
+        index_train = np.loadtxt(
+            os.path.join(data_in_path, f"index_train_{i_sim}.txt")
+        )
+        index_test = np.loadtxt(
+            os.path.join(data_in_path, f"index_test_{i_sim}.txt")
+        )
+
+        X_train = X[[int(i) for i in index_train.tolist()]]
+        y_train = y[[int(i) for i in index_train.tolist()]]
+
+        X_test = X[[int(i) for i in index_test.tolist()]]
+        y_test = y[[int(i) for i in index_test.tolist()]]
+
+        # Add validation split
+        num_training_examples = int(0.8 * X_train.shape[0])
+        X_valid = X_train[num_training_examples:, :]
+        y_valid = y_train[num_training_examples:]
+        X_train = X_train[0:num_training_examples, :]
+        y_train = y_train[0:num_training_examples]
 
     return X_train, y_train, X_valid, y_valid, X_test, y_test
 
@@ -645,8 +715,11 @@ def main():
                 ignore_index=True,
             )
 
+    # Check for model and agg directories and create if necessary
+    check_directories(run_grid=run_grid)
+
     # Run sequential or run parallel
-    run_parallel = True
+    run_parallel = False
 
     if run_parallel:
         ### Run parallel ###
@@ -678,6 +751,13 @@ def main():
                 ens_method=ens_method,
                 nn_deep_arch=nn_deep_arch,
             )
+
+
+def check_directories(run_grid) -> None:
+    temp_path = run_grid["data_out_path"][0]
+    if not os.path.isdir(temp_path):
+        os.makedirs(temp_path)
+        os.makedirs(temp_path.replace("model", "agg"))
 
 
 if __name__ == "__main__":

@@ -8,11 +8,9 @@ import numpy as np
 import scipy.stats as ss
 import tensorflow as tf
 import tensorflow_probability as tfp
-from concretedropout.tensorflow import (
-    ConcreteDenseDropout,
-    get_dropout_regularizer,
-    get_weight_regularizer,
-)
+from concretedropout.tensorflow import (ConcreteDenseDropout,
+                                        get_dropout_regularizer,
+                                        get_weight_regularizer)
 from nptyping import Float, NDArray
 from tensorflow.keras import Model, Sequential  # type: ignore
 from tensorflow.keras.callbacks import EarlyStopping  # type: ignore
@@ -49,7 +47,7 @@ class BQNBaseModel(BaseModel):
             "p_degree": 12,
             "n_q": 99,
             "lr_adam": 5e-4,  # -1 for Adam-default
-            "n_epochs": 500,
+            "n_epochs": 150,
             "n_patience": 10,
             "n_batch": 64,
             "lay1": 48,
@@ -57,11 +55,9 @@ class BQNBaseModel(BaseModel):
             "actv_out": "softplus",
             "nn_verbose": 0,
             "run_eagerly": False,
-            "p_dropout": 0.1,
-            "p_dropout_input": 0,
         }
 
-    def _build(self, input_length: int) -> Model:
+    def _build(self, n_samples: int, n_features: int) -> Model:
         # Calculate equidistant quantile levels for loss function
         self.q_levels_loss = np.arange(
             start=1 / (self.hpar["n_q"] + 1),
@@ -89,7 +85,7 @@ class BQNBaseModel(BaseModel):
 
         ### Build network ###
         model = self._get_architecture(
-            input_length=input_length, training=self.training
+            n_samples=n_samples, n_features=n_features
         )
 
         # Get custom loss
@@ -172,7 +168,9 @@ class BQNBaseModel(BaseModel):
         X_valid = (X_valid - self.tr_center) / self.tr_scale
 
         ### Build model ###
-        self.model = self._build(input_length=X_train.shape[1])
+        self.model = self._build(
+            n_samples=X_train.shape[0], n_features=X_train.shape[1]
+        )
 
         # Take time
         start_tm = time.time_ns()
@@ -265,9 +263,7 @@ class BQNBaseModel(BaseModel):
 
 
 class BQNRandInitModel(BQNBaseModel):
-    def _get_architecture(
-        self, input_length: int, training: bool = False
-    ) -> Model:
+    def _get_architecture(self, n_samples: int, n_features: int) -> Model:
         """Construct and return BQN base model
 
         Architecture:
@@ -300,24 +296,19 @@ class BQNRandInitModel(BQNBaseModel):
 
         ### Build network ###
         # Input
-        input = Input(shape=input_length, name="input", dtype=self.dtype)
+        input = Input(shape=n_features, name="input", dtype=self.dtype)
 
         # Hidden layers
         for idx, layer_info in enumerate(self.deep_arch):
-            # Get layer class
-            if layer_info[0] == "Dense":
-                layer_class = Dense
-            else:
-                layer_class = Dense
             # Build layers
             if idx == 0:
-                hidden_layer = layer_class(
+                hidden_layer = Dense(
                     units=layer_info[1],
                     activation=self.hpar["actv"],
                     dtype=self.dtype,
                 )(input)
             else:
-                hidden_layer = layer_class(
+                hidden_layer = Dense(
                     units=layer_info[1],
                     activation=self.hpar["actv"],
                     dtype=self.dtype,
@@ -368,11 +359,16 @@ class BQNDropoutModel(BQNBaseModel):
             q_levels,
             **kwargs,
         )
-        self.training = True
+        self.hpar.update(
+            {
+                "training": True,
+                "p_dropout": 0.05,
+                "p_dropout_input": 0,
+                "upscale_units": True,
+            }
+        )
 
-    def _get_architecture(
-        self, input_length: int, training: bool = False
-    ) -> Model:
+    def _get_architecture(self, n_samples: int, n_features: int) -> Model:
         """Construct and return BQN base model
 
         Architecture:
@@ -408,33 +404,31 @@ class BQNDropoutModel(BQNBaseModel):
 
         ### Build network ###
         # Input
-        input = Input(shape=input_length, name="input", dtype=self.dtype)
+        input = Input(shape=n_features, name="input", dtype=self.dtype)
         # Input dropout
-        # input_d = Dropout(
-        #     rate=self.hpar["p_dropout_input"], noise_shape=(input_length,)
-        # )(input, training=training)
+        input_d = Dropout(
+            rate=self.hpar["p_dropout_input"], noise_shape=(n_features,)
+        )(input, training=self.hpar["training"])
 
         # Hidden layers
         for idx, layer_info in enumerate(self.deep_arch):
-            # Get layer class
-            if layer_info[0] == "Dense":
-                layer_class = Dense
+            # Calculate units
+            if self.hpar["upscale_units"]:
+                n_units = int(layer_info[1] / (1 - p_dropout))
             else:
-                layer_class = Dense
+                n_units = layer_info[1]
             # Build layers
             if idx == 0:
-                n_units = int(layer_info[1] / (1 - p_dropout))
-                hidden_layer = layer_class(
+                hidden_layer = Dense(
                     units=n_units,
                     activation=self.hpar["actv"],
                     dtype=self.dtype,
-                )(input)
+                )(input_d)
                 hidden_layer_d = Dropout(
                     rate=p_dropout, noise_shape=(n_units,)
-                )(hidden_layer, training=training)
+                )(hidden_layer, training=self.hpar["training"])
             else:
-                n_units = int(layer_info[1] / (1 - p_dropout))
-                hidden_layer = layer_class(
+                hidden_layer = Dense(
                     units=n_units,
                     activation=self.hpar["actv"],
                     dtype=self.dtype,
@@ -443,7 +437,7 @@ class BQNDropoutModel(BQNBaseModel):
                 )
                 hidden_layer_d = Dropout(
                     rate=p_dropout, noise_shape=(n_units,)
-                )(hidden_layer, training=training)
+                )(hidden_layer, training=self.hpar["training"])
 
         # Different activation functions for output (alpha_0 and positive
         # increments)
@@ -469,12 +463,40 @@ class BQNDropoutModel(BQNBaseModel):
 
 
 class BQNBayesianModel(BQNBaseModel):
-    def _get_architecture(self, input_length: int, training: bool) -> Model:
+    def __init__(
+        self,
+        nn_deep_arch: list[Any],
+        n_ens: int,
+        n_cores: int,
+        rpy_elements: dict[str, Any],
+        dtype: str = "float32",
+        q_levels: NDArray[Any, Float] | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            nn_deep_arch,
+            n_ens,
+            n_cores,
+            rpy_elements,
+            dtype,
+            q_levels,
+            **kwargs,
+        )
+        self.hpar.update(
+            {
+                "n_epochs": 500,
+                "prior": "standard_normal",
+                "posterior": "mean_field",
+                "post_scale_scaling": 0.001,
+            }
+        )
+
+    def _get_architecture(self, n_samples: int, n_features: int) -> Model:
         tf.keras.backend.set_floatx(self.dtype)
 
         ### Build network ###
         # Input
-        input = Input(shape=(input_length,), name="input", dtype=self.dtype)
+        input = Input(shape=(n_features,), name="input", dtype=self.dtype)
 
         # Get prior and posterior
         prior_fn = self._get_prior()
@@ -482,31 +504,28 @@ class BQNBayesianModel(BQNBaseModel):
 
         # Hidden layers
         for idx, layer_info in enumerate(self.deep_arch):
-            # Get layer class
-            if layer_info[0] == "Dense":
-                layer_class = tfp.layers.DenseVariational
-            else:
-                layer_class = tfp.layers.DenseVariational
             # Build layers
             if idx == 0:
-                hidden_layer = layer_class(
+                hidden_layer = tfp.layers.DenseVariational(
                     units=layer_info[1],
                     make_prior_fn=prior_fn,
                     make_posterior_fn=posterior_fn,
-                    kl_weight=1 / 5000,
-                    activation=self.hpar["actv"],
-                    dtype=self.dtype,
-                )(input, training=training)
-            else:
-                hidden_layer = layer_class(
-                    units=layer_info[1],
-                    make_prior_fn=prior_fn,
-                    make_posterior_fn=posterior_fn,
-                    kl_weight=1 / 5000,
+                    kl_weight=1 / n_samples,
                     activation=self.hpar["actv"],
                     dtype=self.dtype,
                 )(
-                    hidden_layer, training=training  # type: ignore
+                    input
+                )  # TODO: Is training parameter needed?
+            else:
+                hidden_layer = tfp.layers.DenseVariational(
+                    units=layer_info[1],
+                    make_prior_fn=prior_fn,
+                    make_posterior_fn=posterior_fn,
+                    kl_weight=1 / n_samples,
+                    activation=self.hpar["actv"],
+                    dtype=self.dtype,
+                )(
+                    hidden_layer  # type: ignore
                 )
 
         # Different activation functions for output
@@ -514,7 +533,7 @@ class BQNBayesianModel(BQNBaseModel):
             units=1,
             make_prior_fn=prior_fn,
             make_posterior_fn=posterior_fn,
-            kl_weight=1 / 5000,
+            kl_weight=1 / n_samples,
             dtype=self.dtype,
         )(
             hidden_layer  # type: ignore
@@ -523,7 +542,7 @@ class BQNBayesianModel(BQNBaseModel):
             units=self.hpar["p_degree"],
             make_prior_fn=prior_fn,
             make_posterior_fn=posterior_fn,
-            kl_weight=1 / 5000,
+            kl_weight=1 / n_samples,
             activation="softplus",
             dtype=self.dtype,
         )(
@@ -626,7 +645,8 @@ class BQNBayesianModel(BQNBaseModel):
                             tfp.distributions.Normal(
                                 loc=t[..., :n],
                                 scale=1e-5
-                                + 0.001 * tf.nn.softplus(c + t[..., n:]),
+                                + self.hpar["post_scale_scaling"]
+                                * tf.nn.softplus(c + t[..., n:]),
                             ),
                             reinterpreted_batch_ndims=1,
                         )
@@ -639,37 +659,31 @@ class BQNBayesianModel(BQNBaseModel):
 
 
 class BQNVariationalDropoutModel(BQNBaseModel):
-    def _get_architecture(self, input_length: int, training: bool) -> Model:
+    def _get_architecture(self, n_samples: int, n_features: int) -> Model:
         tf.keras.backend.set_floatx(self.dtype)
 
         ### Build network ###
         # Input
-        input = Input(shape=(input_length,), name="input", dtype=self.dtype)
+        input = Input(shape=(n_features,), name="input", dtype=self.dtype)
 
         # Hidden layers
         for idx, layer_info in enumerate(self.deep_arch):
-            # Get layer class
-            if layer_info[0] == "Dense":
-                layer_class = ed.layers.DenseVariationalDropout
-            else:
-                layer_class = ed.layers.DenseVariationalDropout
             # Build layers
             if idx == 0:
-                hidden_layer = layer_class(
+                hidden_layer = ed.layers.DenseVariationalDropout(
                     units=layer_info[1],
                     activation=self.hpar["actv"],
                     dtype=self.dtype,
-                )(input, training=training)
+                )(input)
             else:
-                hidden_layer = layer_class(
+                hidden_layer = ed.layers.DenseVariationalDropout(
                     units=layer_info[1],
                     activation=self.hpar["actv"],
                     dtype=self.dtype,
                 )(
-                    hidden_layer, training=training  # type: ignore
+                    hidden_layer  # type: ignore
                 )
 
-        # Different activation functions for output
         # Different activation functions for output (alpha_0 and positive
         # increments)
         alpha0_out = Dense(units=1, dtype=self.dtype)(
@@ -694,29 +708,48 @@ class BQNVariationalDropoutModel(BQNBaseModel):
 
 
 class BQNConcreteDropoutModel(BQNBaseModel):
-    def _get_architecture(self, input_length: int, training: bool) -> Model:
+    def __init__(
+        self,
+        nn_deep_arch: list[Any],
+        n_ens: int,
+        n_cores: int,
+        rpy_elements: dict[str, Any],
+        dtype: str = "float32",
+        q_levels: NDArray[Any, Float] | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            nn_deep_arch,
+            n_ens,
+            n_cores,
+            rpy_elements,
+            dtype,
+            q_levels,
+            **kwargs,
+        )
+        self.hpar.update(
+            {
+                "tau": 1.0,
+            }
+        )
+
+    def _get_architecture(self, n_samples: int, n_features: int) -> Model:
         tf.keras.backend.set_floatx(self.dtype)
 
         ### Build network ###
         # Input
-        input = Input(shape=(input_length,), name="input", dtype=self.dtype)
+        input = Input(shape=(n_features,), name="input", dtype=self.dtype)
 
-        train_sample_size = 5000
-        wr = get_weight_regularizer(N=train_sample_size, l=1e-2, tau=1.0)
+        wr = get_weight_regularizer(N=n_samples, l=1e-2, tau=self.hpar["tau"])
         dr = get_dropout_regularizer(
-            N=train_sample_size, tau=1.0, cross_entropy_loss=False
+            N=n_samples, tau=self.hpar["tau"], cross_entropy_loss=False
         )
         # Hidden layers
         for idx, layer_info in enumerate(self.deep_arch):
-            # Get layer class
-            if layer_info[0] == "Dense":
-                layer_class = Dense
-            else:
-                layer_class = Dense
             # Build layers
             if idx == 0:
                 hidden_layer = ConcreteDenseDropout(
-                    layer_class(
+                    Dense(
                         units=layer_info[1],
                         activation=self.hpar["actv"],
                         dtype=self.dtype,
@@ -724,10 +757,10 @@ class BQNConcreteDropoutModel(BQNBaseModel):
                     weight_regularizer=wr,
                     dropout_regularizer=dr,
                     is_mc_dropout=True,
-                )(input, training=training)
+                )(input)
             else:
                 hidden_layer = ConcreteDenseDropout(
-                    layer_class(
+                    Dense(
                         units=layer_info[1],
                         activation=self.hpar["actv"],
                         dtype=self.dtype,
@@ -736,10 +769,9 @@ class BQNConcreteDropoutModel(BQNBaseModel):
                     dropout_regularizer=dr,
                     is_mc_dropout=True,
                 )(
-                    hidden_layer, training=training  # type: ignore
+                    hidden_layer  # type: ignore
                 )
 
-        # Different activation functions for output
         # Different activation functions for output (alpha_0 and positive
         # increments)
         alpha0_out = Dense(units=1, dtype=self.dtype)(
@@ -793,14 +825,21 @@ class BQNBatchEnsembleModel(BQNBaseModel):
             q_levels,
             **kwargs,
         )
-        # self.hpar["n_batch"] = self.hpar["n_batch"] * self.n_ens
+        self.hpar.update(
+            {
+                "n_epochs": 500,
+                "n_batch": 60 * 1,
+            }
+        )
 
-    def _get_architecture(self, input_length: int, training: bool) -> Model:
+    def _get_architecture(self, n_samples: int, n_features: int) -> Model:
         tf.keras.backend.set_floatx(self.dtype)
+
+        ### Calculate batch size ###
 
         ### Build network ###
         # Input
-        input = Input(shape=(input_length,), name="input", dtype=self.dtype)
+        input = Input(shape=(n_features,), name="input", dtype=self.dtype)
 
         # Make initializer
         def make_initializer(num):
@@ -808,14 +847,9 @@ class BQNBatchEnsembleModel(BQNBaseModel):
 
         # Hidden layers
         for idx, layer_info in enumerate(self.deep_arch):
-            # Get layer class
-            if layer_info[0] == "Dense":
-                layer_class = ed.layers.DenseBatchEnsemble
-            else:
-                layer_class = ed.layers.DenseBatchEnsemble
             # Build layers
             if idx == 0:
-                hidden_layer = layer_class(
+                hidden_layer = ed.layers.DenseBatchEnsemble(
                     units=layer_info[1],
                     rank=1,
                     ensemble_size=self.n_ens,
@@ -824,9 +858,9 @@ class BQNBatchEnsembleModel(BQNBaseModel):
                     gamma_initializer=make_initializer(0.5),  # type: ignore
                     activation=self.hpar["actv"],
                     dtype=self.dtype,
-                )(input, training=training)
+                )(input)
             else:
-                hidden_layer = layer_class(
+                hidden_layer = ed.layers.DenseBatchEnsemble(
                     units=layer_info[1],
                     rank=1,
                     ensemble_size=self.n_ens,
@@ -836,10 +870,9 @@ class BQNBatchEnsembleModel(BQNBaseModel):
                     activation=self.hpar["actv"],
                     dtype=self.dtype,
                 )(
-                    hidden_layer, training=training  # type: ignore
+                    hidden_layer  # type: ignore
                 )
 
-        # Different activation functions for output
         # Different activation functions for output (alpha_0 and positive
         # increments)
         alpha0_out = ed.layers.DenseBatchEnsemble(
@@ -889,7 +922,9 @@ class BQNBatchEnsembleModel(BQNBaseModel):
         # Copy weights to adjust them for the ensemble members
         new_weights = copy.deepcopy(weights)
         # Create new model with same architecture but n_ens=1
-        new_model = self._build_single_model(input_length=X_pred.shape[1])
+        new_model = self._build_single_model(
+            n_samples=X_pred.shape[0], n_features=X_pred.shape[1]
+        )
 
         # Initialize predictions
         self.predictions = []
@@ -929,13 +964,13 @@ class BQNBatchEnsembleModel(BQNBaseModel):
         # Time needed
         self.runtime_pred = end_tm - start_tm
 
-    def _build_single_model(self, input_length):
+    def _build_single_model(self, n_samples, n_features):
         # Save originial n_ens
         n_ens_original = self.n_ens
 
         # Use n_ens = 1 for temporary model
         self.n_ens = 1
-        model = self._build(input_length=input_length)
+        model = self._build(n_samples=n_samples, n_features=n_features)
 
         # Reset n_ens to original value
         self.n_ens = n_ens_original
@@ -964,7 +999,8 @@ class BQNBatchEnsembleModel(BQNBaseModel):
                 rpy_elements=self.rpy_elements,
             )
 
-            # Transform ranks to n_(ens+1) bins (for multiples of (n_ens+1) exact)
+            # Transform ranks to n_(ens+1) bins
+            # (for multiples of (n_ens+1) exact)
             if q.shape[1] != self.n_ens:
                 scores["rank"] = np.ceil(
                     scores["rank"] * (self.n_ens + 1) / (q.shape[1] + 1)
