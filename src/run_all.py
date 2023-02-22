@@ -22,8 +22,8 @@ if __name__ == "__main__":
     multi_run = False
 
     methods = [
-        # "rand_init",
-        # "bagging",
+        "rand_init",
+        "bagging",
         "mc_dropout",
         "variational_dropout",
         "concrete_dropout",
