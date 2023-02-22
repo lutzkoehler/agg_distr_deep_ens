@@ -38,14 +38,14 @@ class DRNBaseModel(BaseModel):
             nn_deep_arch, n_ens, n_cores, rpy_elements, dtype, **kwargs
         )
         self.hpar = {
-            "loss": ["0tnorm", -1, 1],
+            "loss": ["norm", -1, 1],
             "lr_adam": 5e-4,  # -1 for Adam-default
             "n_epochs": 150,
             "n_patience": 10,
             "n_batch": 64,
             "lay1": 64,
             "actv": "softplus",
-            "nn_verbose": 1,
+            "nn_verbose": 0,
             "run_eagerly": False,
         }
 

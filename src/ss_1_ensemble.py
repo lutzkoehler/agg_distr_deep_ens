@@ -152,7 +152,7 @@ def run_ensemble_parallel_model(
             print(
                 f"Added {total_samples_added} samples due to BatchEnsemble"
                 f" (train: {n_train_to_add},",
-                f"valid: {n_valid_to_add}",
+                f"valid: {n_valid_to_add})",
             )
 
         # Build model
