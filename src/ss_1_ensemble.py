@@ -152,7 +152,7 @@ def run_ensemble_parallel_model(
             print(
                 f"Added {total_samples_added} samples due to BatchEnsemble"
                 f" (train: {n_train_to_add},",
-                f"valid: {n_valid_to_add}",
+                f"valid: {n_valid_to_add})",
             )
 
         # Build model
@@ -701,6 +701,8 @@ def main():
         )
         if dataset.startswith("scen"):
             temp_n_sim = n_sim
+        elif dataset in ["protein", "year"]:
+            temp_n_sim = 5
         else:
             temp_n_sim = 20
         for i_sim in range(temp_n_sim):
@@ -723,7 +725,7 @@ def main():
 
     if run_parallel:
         ### Run parallel ###
-        Parallel(n_jobs=7, backend="multiprocessing")(
+        Parallel(n_jobs=2, backend="multiprocessing")(
             delayed(run_ensemble)(
                 dataset=row["dataset"],
                 i_sim=row["i_sim"],

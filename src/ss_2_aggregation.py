@@ -675,6 +675,8 @@ def main():
         )
         if dataset.startswith("scen"):
             temp_n_sim = n_sim
+        elif dataset in ["protein", "year"]:
+            temp_n_sim = 5
         else:
             temp_n_sim = 20
         for temp_nn in nn_vec:
@@ -707,7 +709,7 @@ def main():
     print(run_grid.shape[0])
     if run_parallel:
         ### Run parallel ###
-        Parallel(n_jobs=num_cores, backend="multiprocessing")(
+        Parallel(n_jobs=5, backend="multiprocessing")(
             delayed(fn_mc)(
                 temp_nn=row["temp_nn"],
                 dataset=row["dataset"],
@@ -753,4 +755,7 @@ def main():
 
 
 if __name__ == "__main__":
+    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+    os.environ["OMP_NUM_THREADS"] = "5"
+
     main()

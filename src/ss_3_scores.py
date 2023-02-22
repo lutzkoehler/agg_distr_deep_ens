@@ -13,6 +13,10 @@ from fn_eval import fn_cover
 
 
 def main():
+    #### Deactivate GPU usage ####
+    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+    os.environ["OMP_NUM_THREADS"] = "5"
+
     ### Get Config ###
     with open("src/config.json", "rb") as f:
         CONFIG = json.load(f)
@@ -116,6 +120,9 @@ def main():
         if dataset.startswith("scen"):
             temp_n_sim = n_sim
             optimal_score_available = True
+        elif dataset in ["protein", "year"]:
+            temp_n_sim = 5
+            optimal_score_available = False
         else:
             temp_n_sim = 20
             optimal_score_available = False
@@ -367,8 +374,8 @@ def main():
         # Take time
         end_time = time_ns()
 
-        ### Save ###
-        filename = "eval.pkl"
+        ### Save ###d
+        filename = f"eval_{dataset}_{ens_method}.pkl"
         temp_data_out_path = data_out_path.replace("dataset", dataset)
         with open(os.path.join(temp_data_out_path, filename), "wb") as f:
             pickle.dump(df_scores, f)

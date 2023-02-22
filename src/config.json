@@ -1,6 +1,12 @@
 {
     "DATASET": [
-        "kin8nm"
+        "boston",
+        "concrete",
+        "energy",
+        "kin8nm",
+        "power",
+        "wine",
+        "yacht"
     ],
     "_available_DATASET": [
         "scen_1",
@@ -15,14 +21,16 @@
         "kin8nm",
         "naval",
         "power",
-        "protein"
+        "protein",
+        "wine",
+        "yacht",
+        "year"
     ],
-    "ENS_METHOD": "rand_init",
+    "ENS_METHOD": "batchensemble",
     "_available_ENS_METHOD": [
         "rand_init",
         "bagging",
         "mc_dropout",
-        "dropconnect",
         "variational_dropout",
         "concrete_dropout",
         "bayesian",
@@ -114,5 +122,5 @@
         "N_SIM": 10,
         "N_ENS": 10
     },
-    "NUM_CORES": 10
+    "NUM_CORES": 5
 }

@@ -1,4 +1,7 @@
 import json
+import os
+
+import tensorflow as tf
 
 import figures
 import ss_1_ensemble
@@ -6,11 +9,21 @@ import ss_2_aggregation
 import ss_3_scores
 
 if __name__ == "__main__":
-    multi_run = True
+    #### Deactivate GPU usage ####
+    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+    os.environ["OMP_NUM_THREADS"] = "5"
+
+    #### Limit cores to use ####
+    tf.config.threading.set_intra_op_parallelism_threads(3)
+    tf.config.threading.set_inter_op_parallelism_threads(3)
+    # tf.config.set_soft_device_placement(True)
+
+    #### More specifications ####
+    multi_run = False
 
     methods = [
-        "rand_init",
-        "bagging",
+        # "rand_init",
+        # "bagging",
         "mc_dropout",
         "variational_dropout",
         "concrete_dropout",
