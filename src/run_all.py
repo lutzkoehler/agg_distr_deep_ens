@@ -19,7 +19,7 @@ if __name__ == "__main__":
     # tf.config.set_soft_device_placement(True)
 
     #### More specifications ####
-    multi_run = False
+    multi_run = True
 
     methods = [
         "rand_init",

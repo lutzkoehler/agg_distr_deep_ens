@@ -721,7 +721,7 @@ def main():
     check_directories(run_grid=run_grid)
 
     # Run sequential or run parallel
-    run_parallel = False
+    run_parallel = True
 
     if run_parallel:
         ### Run parallel ###

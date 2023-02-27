@@ -217,9 +217,14 @@ def plot_panel_model():
 
     # For-Loop over scenarios
     for dataset in dataset_ls:
+        if dataset in ["protein", "year"]:
+            temp_n_sim = 5
+        else:
+            temp_n_sim = n_sim
         ### Simulation: Load data ###
+        filename = f"eval_{dataset}_{ens_method}.pkl"
         temp_data_path = data_path.replace("dataset", dataset)
-        with open(os.path.join(temp_data_path, "eval.pkl"), "rb") as f:
+        with open(os.path.join(temp_data_path, filename), "rb") as f:
             df_scores = pickle.load(f)
 
         # Check dataset is simulated or UCI Dataset
@@ -428,7 +433,7 @@ def plot_panel_model():
         )
         fig.suptitle(
             f"{ens_method} - Model {dataset}"
-            f" (n_sim {n_sim}, n_ens {n_ens})"
+            f" (n_sim {temp_n_sim}, n_ens {n_ens})"
             f"\n {nn_deep_arch_str}"
         )
         for ax in axes.flatten():  # type: ignore
@@ -465,8 +470,9 @@ def plot_panel_boxplot():
             return
 
         ### Simulation: Load data ###
+        filename = f"eval_{dataset}_{ens_method}.pkl"
         temp_data_path = data_path.replace("dataset", dataset)
-        with open(os.path.join(temp_data_path, "eval.pkl"), "rb") as f:
+        with open(os.path.join(temp_data_path, filename), "rb") as f:
             df_scores = pickle.load(f)
         ### Initialization ###
         # Only scenario
@@ -584,9 +590,14 @@ def plot_pit_ens():
 
     # For-Loop over scenarios
     for dataset in dataset_ls:
+        if dataset in ["protein", "year"]:
+            temp_n_sim = 5
+        else:
+            temp_n_sim = n_sim
         ### Simulation: Load data ###
+        filename = f"eval_{dataset}_{ens_method}.pkl"
         temp_data_path = data_path.replace("dataset", dataset)
-        with open(os.path.join(temp_data_path, "eval.pkl"), "rb") as f:
+        with open(os.path.join(temp_data_path, filename), "rb") as f:
             df_scores = pickle.load(f)
         ### Initialization ###
         # Only scenario
@@ -613,7 +624,7 @@ def plot_pit_ens():
 
             # For-Loop over ensemble member and simulation
             for i_rep in range(n_ens):
-                for i_sim in range(n_sim):
+                for i_sim in range(temp_n_sim):
                     # Load ensemble member
                     filename = (
                         f"{temp_nn}_sim_{i_sim}_ens_{i_rep}.pkl"  # noqa: E501
@@ -639,7 +650,7 @@ def plot_pit_ens():
                 temp_pit = []
 
                 # For-Loop over simulations
-                for i_sim in range(n_sim):
+                for i_sim in range(temp_n_sim):
                     # Load aggregated forecasts
                     filename = f"{temp_nn}_sim_{i_sim}_{temp_agg}_ens_{n_ens}.pkl"  # noqa: E501
                     temp_data_agg_path = data_agg_path.replace(
@@ -705,7 +716,7 @@ def plot_pit_ens():
         )
         fig.suptitle(
             f"{ens_method} - Model {dataset}"
-            f" (n_sim {n_sim}, n_ens {n_ens})"
+            f" (n_sim {temp_n_sim}, n_ens {n_ens})"
             f"\n {nn_deep_arch_str}"
         )
 
@@ -754,6 +765,7 @@ def plot_ensemble_members():
         nn_deep_arch_str,
         nn_vec,
     ) = _get_config_info()
+    temp_n_sim = n_sim
 
     ### Plot CRPS and quantile function of ensemble members
     # Prepare quantile calculation
@@ -769,8 +781,12 @@ def plot_ensemble_members():
 
     ### Collect ensemble member data ###
     for dataset in dataset_ls:
+        if dataset in ["protein", "year"]:
+            temp_n_sim = 5
+        else:
+            temp_n_sim = n_sim
         for temp_nn in nn_vec:
-            for i_sim in range(n_sim):
+            for i_sim in range(temp_n_sim):
                 for i_ens in range(n_ens):
                     # Load ensemble member
                     filename = os.path.join(
@@ -824,8 +840,12 @@ def plot_ensemble_members():
 
     ### Collect aggregated data ###
     for dataset in dataset_ls:
+        if dataset in ["protein", "year"]:
+            temp_n_sim = 5
+        else:
+            temp_n_sim = n_sim
         for temp_nn in nn_vec:
-            for i_sim in range(n_sim):
+            for i_sim in range(temp_n_sim):
                 for i_ens in range(n_ens):
                     for temp_agg in agg_meths:
                         filename = f"{temp_nn}_sim_{i_sim}_{temp_agg}_ens_{n_ens}.pkl"  # noqa: E501
@@ -881,8 +901,9 @@ def plot_ensemble_members():
         squeeze=False,
     )
     for dataset in dataset_ls:
+        filename = f"eval_{dataset}_{ens_method}.pkl"
         temp_data_path = data_path.replace("dataset", dataset)
-        with open(os.path.join(temp_data_path, "eval.pkl"), "rb") as f:
+        with open(os.path.join(temp_data_path, filename), "rb") as f:
             df_scores = pickle.load(f)
         df_ens = df_scores[df_scores["type"] == "ind"]
         df_agg = df_scores[
@@ -949,7 +970,7 @@ def plot_ensemble_members():
         #     ax.legend().set_visible(False)
         fig.suptitle(
             f"Model {dataset} - CRPS and predicted quantile functions"
-            f" (n_sim {n_sim}, n_ens {n_ens})"
+            f" (n_sim {temp_n_sim}, n_ens {n_ens})"
             f"\n {nn_deep_arch_str}"
         )
 
