@@ -162,6 +162,7 @@ class BQNBaseModel(BaseModel):
         # Save center and scale parameters
         self.tr_center = np.mean(X_train, axis=0)
         self.tr_scale = np.std(X_train, axis=0)
+        self.tr_scale[self.tr_scale == 0.0] = 1.0
 
         # Scale training data
         X_train = (X_train - self.tr_center) / self.tr_scale

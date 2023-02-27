@@ -12,7 +12,6 @@ from concretedropout.tensorflow import (
     get_dropout_regularizer,
     get_weight_regularizer,
 )
-from dropconnect_tensorflow import DropConnectDense
 from nptyping import Float, NDArray
 from tensorflow.keras import Model, Sequential  # type: ignore
 from tensorflow.keras.callbacks import EarlyStopping  # type: ignore
@@ -250,6 +249,7 @@ class DRNBaseModel(BaseModel):
         # Save center and scale parameters
         self.tr_center: NDArray = np.mean(X_train, axis=0)
         self.tr_scale: NDArray = np.std(X_train, axis=0)
+        self.tr_scale[self.tr_scale == 0.0] = 1.0
 
         # Scale training data
         X_train = (X_train - self.tr_center) / self.tr_scale  # type: ignore
@@ -387,7 +387,11 @@ class DRNRandInitModel(DRNBaseModel):
                 )
 
         # Different activation functions for output
-        loc_out = Dense(units=1, dtype=self.dtype)(
+        if self.hpar.get("loss") == "norm":
+            activation_mu = "linear"
+        else:
+            activation_mu = "softplus"
+        loc_out = Dense(units=1, activation=activation_mu, dtype=self.dtype)(
             hidden_layer  # type: ignore
         )
         scale_out = Dense(units=1, activation="softplus", dtype=self.dtype)(
@@ -423,6 +427,7 @@ class DRNDropoutModel(DRNBaseModel):
                 "p_dropout": 0.05,
                 "p_dropout_input": 0,
                 "upscale_units": True,
+                "n_batch": 64,
             }
         )
 
@@ -501,8 +506,12 @@ class DRNDropoutModel(DRNBaseModel):
                 )(hidden_layer, training=self.hpar["training"])
 
         # Different activation functions for output
-        loc_out = Dense(units=1, dtype=self.dtype)(
-            hidden_d_layer  # type: ignore
+        if self.hpar.get("loss") == "norm":
+            activation_mu = "linear"
+        else:
+            activation_mu = "softplus"
+        loc_out = Dense(units=1, activation=activation_mu, dtype=self.dtype)(
+            hidden_layer  # type: ignore
         )
         scale_out = Dense(units=1, activation="softplus", dtype=self.dtype)(
             hidden_d_layer  # type: ignore
@@ -515,68 +524,6 @@ class DRNDropoutModel(DRNBaseModel):
         model = Model(inputs=input, outputs=output)
 
         # print(self.deep_arch)
-        # Return model
-        return model
-
-
-class DRNDropConnectModel(DRNBaseModel):
-    def _get_architecture(self, input_length: int, training: bool) -> Model:
-        tf.keras.backend.set_floatx(self.dtype)
-
-        # Extract params
-        p_dropout = self.hpar["p_dropout"]
-
-        ### Build network ###
-        # Input
-        input = Input(shape=(input_length,), name="input", dtype=self.dtype)
-        # Input dropout
-        # input_d = Dropout(
-        #     rate=self.hpar["p_dropout_input"], noise_shape=(input_length,)
-        # )(input, training=training)
-
-        # Hidden layers
-        for idx, layer_info in enumerate(self.deep_arch):
-            # Get layer class
-            # if layer_info[0] == "Dense":
-            #     layer_class = DropConnectDense
-            # else:
-            #     layer_class = DropConnectDense
-            # Calculate units
-            # n_units = int(layer_info[1] / (1 - p_dropout))
-            # Build layers
-            if idx == 0:
-                hidden_layer = DropConnectDense(
-                    units=layer_info[1],
-                    activation=self.hpar["actv"],
-                    dtype=self.dtype,
-                    prob=p_dropout,
-                    use_bias=True,
-                )(input, training=training)
-            else:
-                hidden_layer = DropConnectDense(
-                    units=layer_info[1],
-                    activation=self.hpar["actv"],
-                    dtype=self.dtype,
-                    prob=p_dropout,
-                    use_bias=True,
-                )(
-                    hidden_layer, training=training  # type: ignore
-                )
-
-        # Different activation functions for output
-        loc_out = Dense(units=1, dtype=self.dtype)(
-            hidden_layer  # type: ignore
-        )
-        scale_out = Dense(units=1, activation="softplus", dtype=self.dtype)(
-            hidden_layer  # type: ignore
-        )
-
-        # Concatenate output
-        output = Concatenate()([loc_out, scale_out])
-
-        # Define model
-        model = Model(inputs=input, outputs=output)
-
         # Return model
         return model
 
@@ -648,12 +595,17 @@ class DRNBayesianModel(DRNBaseModel):
                 )
 
         # Different activation functions for output
+        if self.hpar.get("loss") == "norm":
+            activation_mu = "linear"
+        else:
+            activation_mu = "softplus"
         loc_out = tfp.layers.DenseVariational(
             units=1,
             make_prior_fn=prior_fn,
             make_posterior_fn=posterior_fn,
             kl_weight=1 / n_samples,
             dtype=self.dtype,
+            activation=activation_mu,
         )(
             hidden_layer  # type: ignore
         )
@@ -823,7 +775,11 @@ class DRNVariationalDropoutModel(DRNBaseModel):
                 )
 
         # Different activation functions for output
-        loc_out = Dense(units=1, dtype=self.dtype)(
+        if self.hpar.get("loss") == "norm":
+            activation_mu = "linear"
+        else:
+            activation_mu = "softplus"
+        loc_out = Dense(units=1, activation=activation_mu, dtype=self.dtype)(
             hidden_layer  # type: ignore
         )
         scale_out = Dense(units=1, activation="softplus", dtype=self.dtype)(
@@ -899,7 +855,11 @@ class DRNConcreteDropoutModel(DRNBaseModel):
                 )
 
         # Different activation functions for output
-        loc_out = Dense(units=1, dtype=self.dtype)(
+        if self.hpar.get("loss") == "norm":
+            activation_mu = "linear"
+        else:
+            activation_mu = "softplus"
+        loc_out = Dense(units=1, activation=activation_mu, dtype=self.dtype)(
             hidden_layer  # type: ignore
         )
         scale_out = Dense(units=1, activation="softplus", dtype=self.dtype)(
@@ -988,6 +948,10 @@ class DRNBatchEnsembleModel(DRNBaseModel):
                 )
 
         # Different activation functions for output
+        if self.hpar.get("loss") == "norm":
+            activation_mu = "linear"
+        else:
+            activation_mu = "softplus"
         loc_out = ed.layers.DenseBatchEnsemble(
             units=1,
             rank=1,
@@ -996,6 +960,7 @@ class DRNBatchEnsembleModel(DRNBaseModel):
             alpha_initializer=make_initializer(0.5),  # type: ignore
             gamma_initializer=make_initializer(0.5),  # type: ignore
             dtype=self.dtype,
+            activation=activation_mu,
         )(
             hidden_layer  # type: ignore
         )
