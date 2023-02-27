@@ -7,9 +7,11 @@ import keras.backend as K
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
-from concretedropout.tensorflow import (ConcreteDenseDropout,
-                                        get_dropout_regularizer,
-                                        get_weight_regularizer)
+from concretedropout.tensorflow import (
+    ConcreteDenseDropout,
+    get_dropout_regularizer,
+    get_weight_regularizer,
+)
 from dropconnect_tensorflow import DropConnectDense
 from nptyping import Float, NDArray
 from tensorflow.keras import Model, Sequential  # type: ignore
@@ -36,7 +38,7 @@ class DRNBaseModel(BaseModel):
             nn_deep_arch, n_ens, n_cores, rpy_elements, dtype, **kwargs
         )
         self.hpar = {
-            "loss": ["norm", -1, 1],
+            "loss": ["norm", 0.95, 1],
             "lr_adam": 5e-4,  # -1 for Adam-default
             "n_epochs": 150,
             "n_patience": 10,
