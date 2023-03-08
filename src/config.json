@@ -28,7 +28,8 @@
         "variational_dropout",
         "concrete_dropout",
         "bayesian",
-        "batchensemble"
+        "batchensemble",
+        "eva"
     ],
     "NN_DEEP_ARCH": [
         [

@@ -13,11 +13,15 @@ from concretedropout.tensorflow import (
     get_weight_regularizer,
 )
 from nptyping import Float, NDArray
+from rpy2.robjects import vectors
+from rpy2.robjects.conversion import localconverter
+from scipy.special import logsumexp
 from tensorflow.keras import Model, Sequential  # type: ignore
 from tensorflow.keras.callbacks import EarlyStopping  # type: ignore
 from tensorflow.keras.layers import Dense  # type: ignore
 from tensorflow.keras.layers import Concatenate, Dropout, Input  # type: ignore
 from tensorflow.keras.optimizers import Adam  # type: ignore
+from tensorflow.keras.regularizers import L2  # type: ignore
 
 from BaseModel import BaseModel
 from fn_eval import fn_scores_distr
@@ -37,7 +41,7 @@ class DRNBaseModel(BaseModel):
             nn_deep_arch, n_ens, n_cores, rpy_elements, dtype, **kwargs
         )
         self.hpar = {
-            "loss": ["norm", 0.95, 1],
+            "loss": ["tnorm", 0.95, 1],  # naval [0.95, 1], wine [0, 10]
             "lr_adam": 5e-4,  # -1 for Adam-default
             "n_epochs": 150,
             "n_patience": 10,
@@ -328,6 +332,20 @@ class DRNBaseModel(BaseModel):
             "runtime_pred": self.runtime_pred,
         }
 
+    def _get_mu_activation_function(self):
+        if self.hpar["loss"][0] == "0tnorm":
+            return "softplus"
+        elif self.hpar["loss"][0] == "tnorm":
+
+            def truncated_activation(x):
+                _, l, u = self.hpar["loss"]
+                return tf.keras.activations.sigmoid(x) * (u - l) + l
+
+            return truncated_activation
+
+        else:
+            return "linear"
+
     def _store_params(self):
         pass
 
@@ -387,10 +405,7 @@ class DRNRandInitModel(DRNBaseModel):
                 )
 
         # Different activation functions for output
-        if self.hpar.get("loss") == "norm":
-            activation_mu = "linear"
-        else:
-            activation_mu = "softplus"
+        activation_mu = self._get_mu_activation_function()
         loc_out = Dense(units=1, activation=activation_mu, dtype=self.dtype)(
             hidden_layer  # type: ignore
         )
@@ -506,10 +521,7 @@ class DRNDropoutModel(DRNBaseModel):
                 )(hidden_layer, training=self.hpar["training"])
 
         # Different activation functions for output
-        if self.hpar.get("loss") == "norm":
-            activation_mu = "linear"
-        else:
-            activation_mu = "softplus"
+        activation_mu = self._get_mu_activation_function()
         loc_out = Dense(units=1, activation=activation_mu, dtype=self.dtype)(
             hidden_layer  # type: ignore
         )
@@ -595,10 +607,7 @@ class DRNBayesianModel(DRNBaseModel):
                 )
 
         # Different activation functions for output
-        if self.hpar.get("loss") == "norm":
-            activation_mu = "linear"
-        else:
-            activation_mu = "softplus"
+        activation_mu = self._get_mu_activation_function()
         loc_out = tfp.layers.DenseVariational(
             units=1,
             make_prior_fn=prior_fn,
@@ -775,10 +784,7 @@ class DRNVariationalDropoutModel(DRNBaseModel):
                 )
 
         # Different activation functions for output
-        if self.hpar.get("loss") == "norm":
-            activation_mu = "linear"
-        else:
-            activation_mu = "softplus"
+        activation_mu = self._get_mu_activation_function()
         loc_out = Dense(units=1, activation=activation_mu, dtype=self.dtype)(
             hidden_layer  # type: ignore
         )
@@ -855,10 +861,7 @@ class DRNConcreteDropoutModel(DRNBaseModel):
                 )
 
         # Different activation functions for output
-        if self.hpar.get("loss") == "norm":
-            activation_mu = "linear"
-        else:
-            activation_mu = "softplus"
+        activation_mu = self._get_mu_activation_function()
         loc_out = Dense(units=1, activation=activation_mu, dtype=self.dtype)(
             hidden_layer  # type: ignore
         )
@@ -948,10 +951,7 @@ class DRNBatchEnsembleModel(DRNBaseModel):
                 )
 
         # Different activation functions for output
-        if self.hpar.get("loss") == "norm":
-            activation_mu = "linear"
-        else:
-            activation_mu = "softplus"
+        activation_mu = self._get_mu_activation_function()
         loc_out = ed.layers.DenseBatchEnsemble(
             units=1,
             rank=1,
@@ -1082,3 +1082,199 @@ class DRNBatchEnsembleModel(DRNBaseModel):
         ### Output ###
         # Output
         return results
+
+
+class DRNEvaModel(DRNBaseModel):
+    def __init__(
+        self,
+        nn_deep_arch: list[Any],
+        n_ens: int,
+        n_cores: int,
+        rpy_elements: dict[str, Any],
+        dtype: str = "float32",
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            nn_deep_arch, n_ens, n_cores, rpy_elements, dtype, **kwargs
+        )
+        self.hpar.update(
+            {
+                "training": True,
+                "p_dropout": kwargs["p_dropout"],
+                "p_dropout_input": 0,
+                "upscale_units": True,
+                "n_batch": 128,
+                "n_epochs": 4_000,
+                "actv": "relu",
+                "tau": kwargs["tau"],
+                "adam": -1,
+            }
+        )
+
+    def _get_architecture(self, n_samples: int, n_features: int) -> Model:
+        tf.keras.backend.set_floatx(self.dtype)
+
+        # Get dropout rate
+        p_dropout = self.hpar["p_dropout"]
+
+        # Initialize L2 regularizer
+        lengthscale = 1e-2
+        reg = (
+            lengthscale**2
+            * (1 - p_dropout)
+            / (2.0 * n_samples * self.hpar["tau"])
+        )
+
+        ### Build network ###
+        # Input
+        input = Input(shape=n_features, name="input", dtype=self.dtype)
+        x = Dropout(rate=p_dropout, noise_shape=(n_features,))(
+            input, training=self.hpar["training"]
+        )
+        x = Dense(
+            units=50,
+            activation=self.hpar["actv"],
+            kernel_regularizer=L2(l2=reg),
+            dtype=self.dtype,
+        )(x)
+        x = Dropout(rate=p_dropout, noise_shape=(50,))(
+            x, training=self.hpar["training"]
+        )
+
+        # Model output
+        output = Dense(units=1, kernel_regularizer=L2(l2=reg))(x)
+
+        # Define model
+        model = Model(inputs=input, outputs=output)
+
+        # Return model
+        return model
+
+    def _get_loss(self):
+        return "mean_squared_error"
+
+    def fit(
+        self,
+        X_train: NDArray,
+        y_train: NDArray,
+        X_valid: NDArray,
+        y_valid: NDArray,
+    ) -> None:
+        ### Data preparation ###
+        # Read out set sizes
+        self.n_train = X_train.shape[0]
+        self.n_valid = X_valid.shape[0]
+
+        # Save center and scale parameters
+        self.tr_center: NDArray = np.mean(X_train, axis=0)
+        self.tr_scale: NDArray = np.std(X_train, axis=0)
+        self.tr_scale[self.tr_scale == 0.0] = 1.0
+
+        # Scale training data
+        X_train = (X_train - self.tr_center) / self.tr_scale  # type: ignore
+
+        # Scale validation data with training data attributes
+        X_valid = (X_valid - self.tr_center) / self.tr_scale  # type: ignore
+
+        # Scale y train
+        self.y_center = np.mean(y_train, axis=0)
+        self.y_scale = np.std(y_train, axis=0)
+        if self.y_scale == 0:
+            self.y_scale = 1
+        y_train_normalized = (y_train - self.y_center) / self.y_scale
+
+        ### Build model ###
+        self.model = self._build(
+            n_samples=X_train.shape[0], n_features=X_train.shape[1]
+        )
+
+        # Take time
+        start_tm = time.time_ns()
+
+        ### Fit model ###
+        self.model.fit(
+            x=X_train,
+            y=y_train_normalized,
+            epochs=self.hpar["n_epochs"],
+            batch_size=self.hpar["n_batch"],
+            verbose=self.hpar["nn_verbose"],
+        )
+
+        # Take time
+        end_tm = time.time_ns()
+
+        # Time needed
+        self.runtime_est = end_tm - start_tm
+
+        self._store_params()
+
+    def predict(self, X_test: NDArray) -> None:
+        # Scale data for prediction
+        self.n_test = X_test.shape[0]
+        X_pred = (X_test - self.tr_center) / self.tr_scale  # type: ignore
+
+        ### Prediciton ###
+        # Take time
+        start_tm = time.time_ns()
+
+        # Predict 10_000 times on scaled data
+        self.f: NDArray[Any, Float] = np.array(
+            [
+                self.model.predict(
+                    X_pred, batch_size=500, verbose=self.hpar["nn_verbose"]
+                )
+                for _ in range(10_000)
+            ]
+        )
+
+        self.f = self.f * self.y_scale + self.y_center
+        self.mc_pred = np.mean(self.f, axis=0)
+
+        # Take time
+        end_tm = time.time_ns()
+
+        # Time needed
+        self.runtime_pred = end_tm - start_tm
+
+    def get_results(self, y_test: NDArray) -> dict[str, Any]:
+        ### Evaluation ###
+        # Calculate evaluation measres of DRN forecasts
+        scoring_rules = self.rpy_elements["scoring_rules"]
+        np_cv_rules = self.rpy_elements["np_cv_rules"]
+
+        y_vector = vectors.FloatVector(y_test)
+
+        with localconverter(np_cv_rules) as cv:  # noqa: F841
+            crps = np.mean(
+                scoring_rules.crps_sample(y=y_vector, dat=self.mc_pred)
+            )
+
+        rmse = (
+            np.mean((y_test.squeeze() - self.mc_pred.squeeze()) ** 2.0) ** 0.5
+        )
+
+        ll = (
+            logsumexp(
+                -0.5 * self.hpar["tau"] * (y_test[None] - self.f) ** 2.0, 0
+            )
+            - np.log(10_000)
+            - 0.5 * np.log(2 * np.pi)
+            + 0.5 * np.log(self.hpar["tau"])
+        )
+        test_ll = np.mean(ll)
+
+        ### Output ###
+        # Output
+        return {
+            "f": self.f,
+            "rmse": rmse,
+            "crps": crps,
+            "logl": test_ll,
+            "nn_ls": self.hpar,
+            # "scores": scores,
+            "n_train": self.n_train,
+            "n_valid": self.n_valid,
+            "n_test": self.n_test,
+            "runtime_est": self.runtime_est,
+            "runtime_pred": self.runtime_pred,
+        }

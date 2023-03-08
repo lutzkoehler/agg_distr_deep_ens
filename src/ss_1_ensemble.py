@@ -22,6 +22,7 @@ from BaseModel import BaseModel
 from fn_basic import fn_upit
 
 METHOD_CLASS_CONFIG = {
+    "eva": "Eva",
     "mc_dropout": "Dropout",
     "dropconnect": "DropConnect",
     "variational_dropout": "VariationalDropout",
@@ -533,6 +534,181 @@ def run_ensemble_multi_model(
             del model
 
 
+def run_eva_multi_model(
+    dataset: str,
+    i_sim: int,
+    n_ens: int,
+    nn_vec: list[str],
+    data_in_path: str,
+    data_out_path: str,
+    num_cores: int,
+    ens_method: str = "mc_dropout",
+    nn_deep_arch: list[Any] | None = None,
+) -> None:
+    """Run and train a model type n_ens times
+
+    Saves the following information to a pickle file:
+    [pred_nn, y_valid, y_test]
+
+    Parameters
+    ----------
+    dataset : str
+        Name of dataset
+    i_sim : int
+        Simulation run
+    n_ens : int
+        Ensemble size
+    nn_vec : list[str]
+        Contains NN types
+    data_in_path : str
+        Location of generated simulation data (see ss_0_data.py)
+    data_out_path : str
+        Location to save results
+    ens_method : str
+        Specifies the initialization method to use
+    """
+    if i_sim != 16:
+        return
+    ### Initialization ###
+    # Initialize rpy elements for all scoring functions
+    rpy_elements = {
+        "base": importr("base"),
+        "scoring_rules": importr("scoringRules"),
+        "crch": importr("crch"),
+        "np_cv_rules": default_converter + numpy2ri.converter,
+    }
+
+    ### Get and split data ###
+    (
+        X_train,
+        y_train,
+        X_valid,
+        y_valid,
+        X_test,
+        y_test,
+    ) = train_valid_test_split(
+        data_in_path=data_in_path, dataset=dataset, i_sim=i_sim
+    )
+
+    # Read out class
+    model_class = get_model_class("drn", "eva")
+
+    # Set seed (same for each network variant)
+    np.random.seed(123 + 100 * i_sim)
+
+    ### Run grid search ###
+    grid = {
+        "p_dropout": [0.005, 0.01, 0.05, 0.1],
+        "tau": [0.025, 0.05, 0.075],
+    }
+
+    best_p_dropout = 0
+    best_tau = 0
+    best_ll = -float("inf")
+
+    for p_dropout in grid["p_dropout"]:
+        for tau in grid["tau"]:
+            # Create model
+            model = model_class(
+                nn_deep_arch=[],
+                n_ens=n_ens,
+                n_cores=num_cores,
+                rpy_elements=rpy_elements,
+                p_dropout=p_dropout,
+                tau=tau,
+            )
+
+            # Build model
+            model.fit(
+                X_train=X_train,
+                y_train=y_train,
+                X_valid=X_valid,
+                y_valid=y_valid,
+            )
+
+            # Make prediction
+            model.predict(X_test=X_valid)
+
+            # Get results
+            pred_nn = model.get_results(y_test=y_valid)
+
+            with open(
+                f"{i_sim}_validation_results_gird_search.txt", "a"
+            ) as myfile:
+                myfile.write(
+                    "Dropout_Rate: "
+                    + repr(p_dropout)
+                    + " Tau: "
+                    + repr(tau)
+                    + " :: "
+                )
+                myfile.write(
+                    "RMSE: "
+                    + repr(pred_nn["rmse"])
+                    + " - CRPS: "
+                    + repr(pred_nn["crps"])
+                    + " - LogL: "
+                    + repr(pred_nn["logl"])
+                    + "\n"
+                )
+
+            if pred_nn["logl"] > best_ll:
+                best_ll = pred_nn["logl"]
+                best_tau = tau
+                best_p_dropout = p_dropout
+
+            print(f"Finished {i_sim} with {p_dropout} / {tau}")
+
+            del model
+
+    # Fit best network
+    model = model_class(
+        nn_deep_arch=[],
+        n_ens=n_ens,
+        n_cores=num_cores,
+        rpy_elements=rpy_elements,
+        p_dropout=best_p_dropout,
+        tau=best_tau,
+    )
+
+    # Build model
+    model.fit(
+        X_train=np.r_[X_train, X_valid],
+        y_train=np.hstack((y_train, y_valid)),
+        X_valid=X_valid,
+        y_valid=y_valid,
+    )
+
+    # Make prediction
+    model.predict(X_test=X_test)
+
+    # Get results
+    pred_nn = model.get_results(y_test=y_test)
+
+    with open(f"{i_sim}_validation_results_gird_search.txt", "a") as myfile:
+        myfile.write(
+            "##########################"
+            + "Best result Dropout_Rate: "
+            + repr(best_p_dropout)
+            + " Tau: "
+            + repr(best_tau)
+            + " :: "
+        )
+        myfile.write(
+            "RMSE: "
+            + repr(pred_nn["rmse"])
+            + " - CRPS: "
+            + repr(pred_nn["crps"])
+            + " - LogL: "
+            + repr(pred_nn["logl"])
+            + "\n"
+        )
+
+    del model
+
+    print(f"Finished best model {i_sim} with {best_p_dropout} / {best_tau}")
+
+
 def get_model_class(temp_nn: str, ens_method: str) -> Type[BaseModel]:
     """Get model class based on string
 
@@ -679,6 +855,9 @@ def main():
     # Or use the same model to predict each ensemble member
     elif ens_method in METHOD_NUM_MODELS["multi_model"]:
         run_ensemble = run_ensemble_multi_model
+    # Eva's MC dropout implementation
+    elif ens_method == "eva":
+        run_ensemble = run_eva_multi_model
     else:
         run_ensemble = run_ensemble_parallel_model
 
