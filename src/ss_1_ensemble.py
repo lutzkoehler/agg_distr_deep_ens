@@ -652,8 +652,8 @@ def run_eva_multi_model(
                     + "\n"
                 )
 
-            if pred_nn["logl"] > best_ll:
-                best_ll = pred_nn["logl"]
+            if pred_nn["crps"] > best_ll:
+                best_ll = pred_nn["crps"]
                 best_tau = tau
                 best_p_dropout = p_dropout
 
