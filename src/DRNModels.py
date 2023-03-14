@@ -1247,6 +1247,10 @@ class DRNEvaModel(DRNBaseModel):
                 scoring_rules.crps_sample(y=y_vector, dat=self.mc_pred)
             )
 
+        crps_eva = crps_mixnorm_mc(
+            self.mc_pred.reshape((1, self.mc_pred.shape[0])), y_test, 1
+        )
+
         rmse = (
             np.mean((y_test.squeeze() - self.mc_pred.squeeze()) ** 2.0) ** 0.5
         )
@@ -1267,6 +1271,7 @@ class DRNEvaModel(DRNBaseModel):
             "f": self.f,
             "rmse": rmse,
             "crps": crps,
+            "crps_eva": crps_eva,
             "logl": test_ll,
             "nn_ls": self.hpar,
             # "scores": scores,

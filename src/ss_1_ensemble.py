@@ -567,7 +567,7 @@ def run_eva_multi_model(
     ens_method : str
         Specifies the initialization method to use
     """
-    if i_sim != 16:
+    if i_sim != 0:
         return
     ### Initialization ###
     # Initialize rpy elements for all scoring functions
@@ -604,7 +604,7 @@ def run_eva_multi_model(
 
     best_p_dropout = 0
     best_tau = 0
-    best_ll = -float("inf")
+    best_ll = float("inf")
 
     for p_dropout in grid["p_dropout"]:
         for tau in grid["tau"]:
@@ -647,12 +647,14 @@ def run_eva_multi_model(
                     + repr(pred_nn["rmse"])
                     + " - CRPS: "
                     + repr(pred_nn["crps"])
+                    + " - CRPS_E: "
+                    + repr(pred_nn["crps_eva"])
                     + " - LogL: "
                     + repr(pred_nn["logl"])
                     + "\n"
                 )
 
-            if pred_nn["crps"] > best_ll:
+            if pred_nn["crps"] < best_ll:
                 best_ll = pred_nn["crps"]
                 best_tau = tau
                 best_p_dropout = p_dropout
@@ -687,7 +689,7 @@ def run_eva_multi_model(
 
     with open(f"{i_sim}_validation_results_gird_search.txt", "a") as myfile:
         myfile.write(
-            "##########################"
+            "########################## "
             + "Best result Dropout_Rate: "
             + repr(best_p_dropout)
             + " Tau: "
@@ -699,6 +701,8 @@ def run_eva_multi_model(
             + repr(pred_nn["rmse"])
             + " - CRPS: "
             + repr(pred_nn["crps"])
+            + " - CRPS_E: "
+            + repr(pred_nn["crps_eva"])
             + " - LogL: "
             + repr(pred_nn["logl"])
             + "\n"
