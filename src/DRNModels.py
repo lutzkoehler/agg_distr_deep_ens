@@ -7,11 +7,9 @@ import keras.backend as K
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
-from concretedropout.tensorflow import (
-    ConcreteDenseDropout,
-    get_dropout_regularizer,
-    get_weight_regularizer,
-)
+from concretedropout.tensorflow import (ConcreteDenseDropout,
+                                        get_dropout_regularizer,
+                                        get_weight_regularizer)
 from nptyping import Float, NDArray
 from rpy2.robjects import vectors
 from rpy2.robjects.conversion import localconverter

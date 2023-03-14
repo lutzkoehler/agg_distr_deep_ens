@@ -91,7 +91,8 @@
     },
     "PARAMS": {
         "NN_VEC": [
-            "drn"
+            "drn",
+            "bqn"
         ],
         "_available_NN_VEC": [
             "drn",
