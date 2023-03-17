@@ -90,6 +90,28 @@
         "PLOTS_DIR": "plots"
     },
     "PARAMS": {
+        "LOSS": [
+            "tnorm",
+            0,
+            10
+        ],
+        "_available_LOSS": [
+            [
+                "norm",
+                0,
+                0
+            ],
+            [
+                "0tnorm",
+                0,
+                0
+            ],
+            [
+                "tnorm",
+                0,
+                10
+            ]
+        ],
         "NN_VEC": [
             "drn",
             "bqn"
