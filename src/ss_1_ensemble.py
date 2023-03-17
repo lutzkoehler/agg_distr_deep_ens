@@ -10,6 +10,7 @@ from typing import Any, Tuple, Type
 
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 from joblib import Parallel, delayed
 from nptyping import Float, NDArray
 from rpy2.robjects import default_converter, numpy2ri
@@ -567,7 +568,7 @@ def run_eva_multi_model(
     ens_method : str
         Specifies the initialization method to use
     """
-    if i_sim != 0:
+    if i_sim < 17:
         return
     ### Initialization ###
     # Initialize rpy elements for all scoring functions
@@ -662,6 +663,7 @@ def run_eva_multi_model(
             print(f"Finished {i_sim} with {p_dropout} / {tau}")
 
             del model
+            del pred_nn
 
     # Fit best network
     model = model_class(
@@ -709,6 +711,7 @@ def run_eva_multi_model(
         )
 
     del model
+    del pred_nn
 
     print(f"Finished best model {i_sim} with {best_p_dropout} / {best_tau}")
 
@@ -946,4 +949,11 @@ def check_directories(run_grid) -> None:
 
 
 if __name__ == "__main__":
+    #### Deactivate GPU usage ####
+    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+    os.environ["OMP_NUM_THREADS"] = "5"
+
+    #### Limit cores to use ####
+    tf.config.threading.set_intra_op_parallelism_threads(3)
+    tf.config.threading.set_inter_op_parallelism_threads(3)
     main()
