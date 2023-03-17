@@ -1,12 +1,39 @@
 import os
 import pickle
 
+import numpy as np
 import pandas as pd
 
 
 def get_panel_data(
     data_path, dataset_ls, score_vec, nn_vec, n_ens_vec, agg_meths, ens_method
 ):
+    """Creates DataFrame for the list of
+    [datasets, NN types, ensemble sizes, agg methods] and one ens_method.
+
+    Parameters
+    ----------
+    data_path : string
+        Path to eval_{dataset}_{ens_method}.pkl files
+    dataset_ls : list[string]
+        List containing the names of datasets to summarize
+    score_vec : list[string]
+        List containing the names of scores to summarize
+        (e.g. crps, a, w, etc.)
+    nn_vec : list[string]
+        List containing the NN types to consider ("drn", "bqn")
+    n_ens_vec : list[int]
+        List containing ensemble sizes to consider
+    agg_meths : list[string]
+        List containing the aggregation methods to consider (e.g. "lp", "vi")
+    ens_method : string
+        Ensemble method name
+
+    Returns
+    -------
+    DataFrame
+        Columns: dataset, nn, metric, n_ens, agg, score
+    """
     df_plot = pd.DataFrame()
     # For-Loop over scenarios
     for dataset in dataset_ls:
@@ -115,14 +142,37 @@ def get_panel_data(
 def get_best_result_table(
     data_path, nn_vec, ens_method_ls, agg_meths, dataset_ls, n_ens_vec
 ):
+    """Summarize best score for each (dataset, ens_method).
+    Also contains the corresponding agg and n_ens.
+
+    Parameters
+    ----------
+    data_path : string
+        Path to eval_{dataset}_{ens_method}.pkl files
+    nn_vec : list[string]
+        List containing the NN types to consider ("drn", "bqn")
+    ens_method_ls : list[string]
+        List containing the names of ensembles to consider (e.g. "rand_init)
+    agg_meths : list[string]
+        List containing the aggregation methods to consider (e.g. "lp", "vi")
+    dataset_ls : list[string]
+        List containing the names of datasets to summarize
+    n_ens_vec : list[int]
+        List containing ensemble sizes to consider
+
+    Returns
+    -------
+    dict
+        First entry contains the results for DRNs, second for BQN
+    """
     score_vec = ["crps", "crpss", "me", "lgt", "cov", "a", "w"]
 
     results = {"drn_results": None, "bqn_results": None}
 
     for ens_method in ens_method_ls:
-        temp_data_path = os.path.join(data_path, ens_method)
+        # temp_data_path = os.path.join(data_path, ens_method)
         df = get_panel_data(
-            temp_data_path,
+            data_path,
             dataset_ls,
             score_vec,
             nn_vec,
@@ -172,3 +222,93 @@ def get_best_result_table(
                 results["bqn_results"] = temp_results  # type: ignore
 
     return results
+
+
+def get_skills_table(
+    data_path,
+    dataset_ls,
+    score_vec,
+    nn_vec,
+    n_ens_vec,
+    agg_meths,
+    ens_method_ls,
+):
+    """Creates DataFrame containing the skills for each
+    ensemble size in n_ens_vec and for each (ens_method, dataset, nn, agg)
+
+    Parameters
+    ----------
+    data_path : string
+        Path to eval_{dataset}_{ens_method}.pkl files
+    dataset_ls : list[string]
+        List containing the names of datasets to summarize
+    score_vec : list[string]
+        List containing the names of scores to summarize
+        (e.g. crps, a, w, etc.)
+    nn_vec : list[string]
+        List containing the NN types to consider ("drn", "bqn")
+    n_ens_vec : list[int]
+        List containing ensemble sizes to consider
+    agg_meths : list[string]
+        List containing the aggregation methods to consider (e.g. "lp", "vi")
+    ens_method_ls : list[string]
+        List containing the names of ensembles to consider (e.g. "rand_init)
+
+    Returns
+    -------
+    DataFrame
+        Contains the skills for each ensemble size
+    """
+    df_skills = pd.DataFrame()
+
+    for ens_method in ens_method_ls:
+        df = get_panel_data(
+            data_path,
+            dataset_ls,
+            score_vec,
+            nn_vec,
+            n_ens_vec,
+            agg_meths,
+            ens_method,
+        )
+        # df = df_results.dropna()
+
+        for dataset in df["dataset"].unique():
+            for nn in df["nn"].unique():
+                # Filtered for dataset, NN type and ens_method
+                df_temp = df[(df["dataset"] == dataset) & (df["nn"] == nn)]
+
+                for agg in agg_meths:
+                    # Get skill for agg method
+                    # Filtered for dataset, NN type, ens_method and
+                    # aggregation method
+                    df_temp_agg = df_temp[df_temp["agg"] == agg]
+                    skills = df_temp_agg[df_temp_agg["metric"] == "crpss"][
+                        "score"
+                    ].tolist()
+
+                    dict_skills = {
+                        f"skill_{n_ens}": skill
+                        for (n_ens, skill) in zip(n_ens_vec, skills)
+                    }
+
+                    # Add information to row
+                    new_row = {
+                        "ens_method": ens_method,
+                        "dataset": df_temp_agg["dataset"].iloc[0],
+                        "nn": df_temp_agg["nn"].iloc[0],
+                        "agg": df_temp_agg["agg"].iloc[0],
+                        **dict_skills,
+                        "avg_skill": np.mean(skills),
+                    }
+
+                    # Append to data frame
+                    df_skills = pd.concat(
+                        [
+                            df_skills,
+                            pd.DataFrame(new_row, index=[0]),
+                        ],
+                        ignore_index=True,
+                    )
+
+    return df_skills

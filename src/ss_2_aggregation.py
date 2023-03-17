@@ -55,14 +55,32 @@ def fn_vi_drn(a: float, w: float, f_sum, y: np.ndarray, **kwargs) -> float:
     # Add intercept term (only to location)
     f[:, 0] = a + f[:, 0]
 
+    distr, lower, upper = kwargs["loss"]
     # Calculate CRPS
     scoring_rules = importr("scoringRules")
     np_cv_rules = default_converter + numpy2ri.converter
     y_vector = vectors.FloatVector(y)
     with localconverter(np_cv_rules) as cv:  # noqa: F841
-        res = np.mean(
-            scoring_rules.crps_norm(y=y_vector, mean=f[:, 0], sd=f[:, 1])
-        )
+        if distr == "0tnorm":  # 0-truncated normal distribution
+            res = np.mean(
+                scoring_rules.crps_tnorm(
+                    y=y_vector, location=f[:, 0], scale=f[:, 1], lower=0
+                )
+            )
+        elif distr == "tnorm":  # Truncated normal distribution
+            res = np.mean(
+                scoring_rules.crps_tnorm(
+                    y=y_vector,
+                    location=f[:, 0],
+                    scale=f[:, 1],
+                    lower=lower,
+                    upper=upper,
+                )
+            )
+        else:  # Normal distribution
+            res = np.mean(
+                scoring_rules.crps_norm(y=y_vector, mean=f[:, 0], sd=f[:, 1])
+            )
 
     return res
 
@@ -165,6 +183,9 @@ def fn_mc(
     # Get aggregation methods
     agg_meths = kwargs["agg_meths_ls"][temp_nn]
 
+    # Get loss distribution
+    distr, lower, upper = kwargs["loss"]
+
     # Create list for ensemble member forecasts on test and validation set
     f_ls = {}
     f_valid_ls = {}
@@ -264,12 +285,34 @@ def fn_mc(
                 )
 
                 # Draw from individual distribution
-                res = ss.norm.rvs(
-                    size=kwargs["n_lp_samples"],
-                    loc=temp_f[:, 0],
-                    scale=temp_f[:, 1],
-                )
-
+                if distr == "0tnorm":  # 0 truncated normal distribution
+                    a = (0 - temp_f[:, 0]) / temp_f[:, 1]
+                    b = np.full(
+                        shape=temp_f[:, 0].shape, fill_value=float("inf")
+                    )
+                    res = ss.truncnorm.rvs(
+                        size=kwargs["n_lp_samples"],
+                        loc=temp_f[:, 0],
+                        scale=temp_f[:, 1],
+                        a=a,
+                        b=b,
+                    )
+                elif distr == "tnorm":  # Truncated normal distribution
+                    a = (lower - temp_f[:, 0]) / temp_f[:, 1]
+                    b = (upper - temp_f[:, 0]) / temp_f[:, 1]
+                    res = ss.truncnorm.rvs(
+                        size=kwargs["n_lp_samples"],
+                        loc=temp_f[:, 0],
+                        scale=temp_f[:, 1],
+                        a=a,
+                        b=b,
+                    )
+                else:  # Normal distribution
+                    res = ss.norm.rvs(
+                        size=kwargs["n_lp_samples"],
+                        loc=temp_f[:, 0],
+                        scale=temp_f[:, 1],
+                    )
                 # Output
                 return np.asarray(res)
 
@@ -302,13 +345,21 @@ def fn_mc(
             pred_agg["scores"] = fn_scores_distr(
                 f=pred_agg["f"],
                 y=y_test,
-                distr="norm",
+                distr=distr,
+                lower=lower,
+                upper=upper,
                 rpy_elements=rpy_elements,
             )
         elif (temp_nn == "drn") & (temp_agg == "vi-w"):
             # Wrapper function
             def fn_optim_drn_vi_w(x):
-                return fn_vi_drn(a=0, w=x, f_sum=f_valid_sum, y=y_valid)
+                return fn_vi_drn(
+                    a=0,
+                    w=x,
+                    f_sum=f_valid_sum,
+                    y=y_valid,
+                    loss=[distr, lower, upper],
+                )
 
             # Optimize
             est = minimize(
@@ -325,14 +376,20 @@ def fn_mc(
             pred_agg["scores"] = fn_scores_distr(
                 f=pred_agg["f"],
                 y=y_test,
-                distr="norm",
+                distr=distr,
+                lower=lower,
+                upper=upper,
                 rpy_elements=rpy_elements,
             )
         elif (temp_nn == "drn") & (temp_agg == "vi-a"):
             # Wrapper function
             def fn_optim_drn_vi_a(x):
                 return fn_vi_drn(
-                    a=x, w=1 / n_ens, f_sum=f_valid_sum, y=y_valid
+                    a=x,
+                    w=1 / n_ens,
+                    f_sum=f_valid_sum,
+                    y=y_valid,
+                    loss=[distr, lower, upper],
                 )
 
             # Optimize
@@ -355,13 +412,21 @@ def fn_mc(
             pred_agg["scores"] = fn_scores_distr(
                 f=pred_agg["f"],
                 y=y_test,
-                distr="norm",
+                distr=distr,
+                lower=lower,
+                upper=upper,
                 rpy_elements=rpy_elements,
             )
         elif (temp_nn == "drn") & (temp_agg == "vi-aw"):
             # Wrapper function
             def fn_optim_drn_vi_aw(x):
-                return fn_vi_drn(a=x[0], w=x[1], f_sum=f_valid_sum, y=y_valid)
+                return fn_vi_drn(
+                    a=x[0],
+                    w=x[1],
+                    f_sum=f_valid_sum,
+                    y=y_valid,
+                    loss=[distr, lower, upper],
+                )
 
             # Optimize
             est = minimize(
@@ -382,7 +447,9 @@ def fn_mc(
             pred_agg["scores"] = fn_scores_distr(
                 f=pred_agg["f"],
                 y=y_test,
-                distr="norm",
+                distr=distr,
+                lower=lower,
+                upper=upper,
                 rpy_elements=rpy_elements,
             )
         elif (temp_nn == "bqn") & (temp_agg == "lp"):
@@ -638,6 +705,9 @@ def main():
     # Size of network ensembles
     n_ens = CONFIG["PARAMS"]["N_ENS"]
 
+    # Loss function "norm", "0tnorm", "tnorm"
+    loss = CONFIG["PARAMS"]["LOSS"]
+
     # Ensemble sizes to be combined
     step_size = 2
     n_ens_vec = np.arange(
@@ -724,6 +794,7 @@ def main():
                 n_lp_samples=n_lp_samples,
                 n_q_samples=n_q_samples,
                 num_cores=int(num_cores / 2),
+                loss=loss,
             )
             for _, row in run_grid.iterrows()
         )
@@ -743,6 +814,7 @@ def main():
                 n_lp_samples=n_lp_samples,
                 n_q_samples=n_q_samples,
                 num_cores=num_cores,
+                loss=loss,
             )
 
     # Take time

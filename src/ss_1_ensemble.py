@@ -57,6 +57,7 @@ def run_ensemble_parallel_model(
     data_in_path: str,
     data_out_path: str,
     num_cores: int,
+    loss: list[Any],
     ens_method: str = "batchensemble",
     nn_deep_arch: list[Any] | None = None,
 ) -> None:
@@ -123,6 +124,7 @@ def run_ensemble_parallel_model(
             nn_deep_arch=nn_deep_arch[0],
             n_cores=num_cores,
             rpy_elements=rpy_elements,
+            loss=loss,
         )
 
         # For BatchEnsemble:
@@ -227,6 +229,7 @@ def run_ensemble_single_model(
     data_in_path: str,
     data_out_path: str,
     num_cores: int,
+    loss: list[Any],
     ens_method: str = "mc_dropout",
     nn_deep_arch: list[Any] | None = None,
 ) -> None:
@@ -304,6 +307,7 @@ def run_ensemble_single_model(
             n_cores=num_cores,
             rpy_elements=rpy_elements,
             training=training,  # Makes dropout active in testing
+            loss=loss,
         )
 
         # Build model
@@ -330,6 +334,7 @@ def run_ensemble_single_model(
                     n_cores=num_cores,
                     rpy_elements=rpy_elements,
                     training=training,  # Makes dropout active in testing
+                    loss=loss,
                 )
 
                 # Build model
@@ -392,6 +397,7 @@ def run_ensemble_multi_model(
     data_in_path: str,
     data_out_path: str,
     num_cores: int,
+    loss: list[Any],
     ens_method: str = "rand_init",
     nn_deep_arch: list[Any] | None = None,
 ) -> None:
@@ -488,6 +494,7 @@ def run_ensemble_multi_model(
                 n_ens=n_ens,
                 n_cores=num_cores,
                 rpy_elements=rpy_elements,
+                loss=loss,
             )
 
             # Build model
@@ -543,6 +550,7 @@ def run_eva_multi_model(
     data_in_path: str,
     data_out_path: str,
     num_cores: int,
+    loss: list[Any],
     ens_method: str = "mc_dropout",
     nn_deep_arch: list[Any] | None = None,
 ) -> None:
@@ -850,6 +858,9 @@ def main():
     # Size of network ensembles
     n_ens = CONFIG["PARAMS"]["N_ENS"]
 
+    # Loss function "norm", "0tnorm", "tnorm"
+    loss = CONFIG["PARAMS"]["LOSS"]
+
     # Get method for generating ensemble members
     ens_method = CONFIG["ENS_METHOD"]
 
@@ -922,6 +933,7 @@ def main():
                 num_cores=num_cores,
                 ens_method=ens_method,
                 nn_deep_arch=nn_deep_arch,
+                loss=loss,
             )
             for _, row in run_grid.iterrows()
         )
@@ -938,6 +950,7 @@ def main():
                 num_cores=num_cores,
                 ens_method=ens_method,
                 nn_deep_arch=nn_deep_arch,
+                loss=loss,
             )
 
 

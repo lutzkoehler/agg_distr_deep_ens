@@ -10,6 +10,7 @@ import tensorflow_probability as tfp
 from concretedropout.tensorflow import (ConcreteDenseDropout,
                                         get_dropout_regularizer,
                                         get_weight_regularizer)
+from crpsmixture import crps_mixnorm_mc
 from nptyping import Float, NDArray
 from rpy2.robjects import vectors
 from rpy2.robjects.conversion import localconverter
@@ -39,7 +40,6 @@ class DRNBaseModel(BaseModel):
             nn_deep_arch, n_ens, n_cores, rpy_elements, dtype, **kwargs
         )
         self.hpar = {
-            "loss": ["tnorm", 0.95, 1],  # naval [0.95, 1], wine [0, 10]
             "lr_adam": 5e-4,  # -1 for Adam-default
             "n_epochs": 150,
             "n_patience": 10,
@@ -49,6 +49,7 @@ class DRNBaseModel(BaseModel):
             "nn_verbose": 0,
             "run_eagerly": False,
         }
+        self.hpar.update({"loss": kwargs["loss"]})
 
     def _build(self, n_samples: int, n_features: int) -> Model:
         # Custom optizimer
@@ -85,18 +86,18 @@ class DRNBaseModel(BaseModel):
         )  # , dtype=tf.float64)
 
         # Lower and Upper bound
-        loss, l, u = self.hpar["loss"]
+        loss, lower, upper = self.hpar["loss"]
         l_mass = K.constant(0)
         u_mass = K.constant(0)
 
         if loss == "0tnorm":
-            l = 0  # noqa: E741
-            u = np.Inf
-        if (l is None) and (u is None):
+            lower = 0  # noqa: E741
+            upper = np.Inf
+        if (lower is None) and (upper is None):
             loss = "norm"
 
-        l = K.constant(l)  # noqa: E741
-        u = K.constant(u)
+        lower = K.constant(lower)  # noqa: E741
+        upper = K.constant(upper)
 
         # Custom loss function
         def crps_norm_loss(y_true, y_pred):
@@ -174,8 +175,8 @@ class DRNBaseModel(BaseModel):
 
             # Standardization
             z_y = (y_true - mu) / sigma
-            z_l = (l - mu) / sigma
-            z_u = (u - mu) / sigma
+            z_l = (lower - mu) / sigma
+            z_u = (upper - mu) / sigma
 
             # Get z in bounds z_l and z_u
             z = K.clip(z_y, min_value=z_l, max_value=z_u)
@@ -312,9 +313,16 @@ class DRNBaseModel(BaseModel):
 
     def get_results(self, y_test: NDArray) -> dict[str, Any]:
         ### Evaluation ###
+        # Extract distribution to fit
+        distr, lower, upper = self.hpar["loss"]
         # Calculate evaluation measres of DRN forecasts
         scores = fn_scores_distr(
-            f=self.f, y=y_test, distr="norm", rpy_elements=self.rpy_elements
+            f=self.f,
+            y=y_test,
+            distr=distr,
+            lower=lower,
+            upper=upper,
+            rpy_elements=self.rpy_elements,
         )
 
         ### Output ###
@@ -1060,8 +1068,16 @@ class DRNBatchEnsembleModel(DRNBaseModel):
         ### Evaluation ###
         # Calculate evaluation measres of DRN forecasts
         for f in self.predictions:
+            # Extract distribution to fit
+            distr, lower, upper = self.hpar["loss"]
+            # Calculate evaluation measres of DRN forecasts
             scores = fn_scores_distr(
-                f=f, y=y_test, distr="norm", rpy_elements=self.rpy_elements
+                f=self.f,
+                y=y_test,
+                distr=distr,
+                lower=lower,
+                upper=upper,
+                rpy_elements=self.rpy_elements,
             )
 
             results.append(

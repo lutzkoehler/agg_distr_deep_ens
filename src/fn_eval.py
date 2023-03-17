@@ -247,7 +247,14 @@ def fn_scores_ens(ens, y, skip_evals=None, scores_ens=True, rpy_elements=None):
 
 
 def fn_scores_distr(
-    f, y, distr="tlogis", n_ens=20, skip_evals=None, rpy_elements=None
+    f,
+    y,
+    distr="tlogis",
+    lower=None,
+    upper=None,
+    n_ens=20,
+    skip_evals=None,
+    rpy_elements=None,
 ) -> pd.DataFrame:  # type: ignore
     """Function for prediciton based on the distributional parameters
 
@@ -257,8 +264,12 @@ def fn_scores_distr(
         Ensemble data for prediction
     y : n vector
         Observations
-    distr : "tlogis", "norm"
+    distr : "tlogis", "norm", "0tnorm", "tnorm"
         Parametric distribution, Default: (zero-)truncated logistic
+    lower : float
+        Speciefies lower truncation, only needed if distr="tnorm"
+    upper : float
+        Specifies upper truncation, only needed if distr="tnorm"
     n_ens : int
         Ensemble size: Used for confidence level of prediction intervals
     skip_evals : string vector
@@ -407,5 +418,104 @@ def fn_scores_distr(
         if skip_evals is not None:
             scores_pp.drop(columns=skip_evals, inplace=True)
 
-        # Return
-        return scores_pp
+    elif distr == "0tnorm":  # 0-truncated normal
+        a = (0 - f[:, 0]) / f[:, 1]
+        b = np.full(shape=f[:, 1].shape, fill_value=float("inf"))
+        # Calculate PIT values
+        if "pit" in scores_pp.columns:
+            scores_pp["pit"] = ss.truncnorm.cdf(
+                x=y, a=a, b=b, loc=f[:, 0], scale=f[:, 1]
+            )
+
+        # Calculate 0 truncated CRPS of forecasts
+        if "crps" in scores_pp.columns:
+            with localconverter(np_cv_rules) as cv:
+                scores_pp["crps"] = scoring_rules.crps_tnorm(
+                    y=y_vector, location=f[:, 0], scale=f[:, 1], lower=0
+                )
+
+        # Calculate Log-Score of forecasts
+        if "logs" in scores_pp.columns:
+            with localconverter(np_cv_rules) as cv:  # noqa: F841
+                scores_pp["logs"] = scoring_rules.logs_tnorm(
+                    y=y_vector, location=f[:, 0], scale=f[:, 1], lower=0
+                )
+
+        # Calculate length of ~(n_ens-1)/(n_ens+1) % prediction interval
+        if "lgt" in scores_pp.columns:
+            scores_pp["lgt"] = ss.truncnorm.ppf(
+                q=n_ens / (n_ens + 1), loc=f[:, 0], scale=f[:, 1], a=a, b=b
+            ) - ss.truncnorm.ppf(
+                q=1 / (n_ens + 1), loc=f[:, 0], scale=f[:, 1], a=a, b=b
+            )
+
+        # Calculate bias of mean forecast
+        scores_pp["e_me"] = f[:, 0] - y
+
+        # Calculate bias of median forecast
+        if "e_md" in scores_pp.columns:
+            scores_pp["e_md"] = (
+                ss.truncnorm.ppf(q=0.5, loc=f[:, 0], scale=f[:, 1], a=a, b=b)
+                - y
+            )
+
+        ### Output ###
+        # Skip evaluation measures
+        if skip_evals is not None:
+            scores_pp.drop(columns=skip_evals, inplace=True)
+
+    elif distr == "tnorm":  # truncated normal
+        a = (lower - f[:, 0]) / f[:, 1]
+        b = (upper - f[:, 0]) / f[:, 1]
+        # Calculate PIT values
+        if "pit" in scores_pp.columns:
+            scores_pp["pit"] = ss.truncnorm.cdf(
+                x=y, a=a, b=b, loc=f[:, 0], scale=f[:, 1]
+            )
+
+        # Calculate 0 truncated CRPS of forecasts
+        if "crps" in scores_pp.columns:
+            with localconverter(np_cv_rules) as cv:
+                scores_pp["crps"] = scoring_rules.crps_tnorm(
+                    y=y_vector,
+                    location=f[:, 0],
+                    scale=f[:, 1],
+                    lower=lower,
+                    upper=upper,
+                )
+
+        # Calculate Log-Score of forecasts
+        if "logs" in scores_pp.columns:
+            with localconverter(np_cv_rules) as cv:  # noqa: F841
+                scores_pp["logs"] = scoring_rules.logs_tnorm(
+                    y=y_vector,
+                    location=f[:, 0],
+                    scale=f[:, 1],
+                    lower=lower,
+                    upper=upper,
+                )
+
+        # Calculate length of ~(n_ens-1)/(n_ens+1) % prediction interval
+        if "lgt" in scores_pp.columns:
+            scores_pp["lgt"] = ss.truncnorm.ppf(
+                q=n_ens / (n_ens + 1), loc=f[:, 0], scale=f[:, 1], a=a, b=b
+            ) - ss.truncnorm.ppf(
+                q=1 / (n_ens + 1), loc=f[:, 0], scale=f[:, 1], a=a, b=b
+            )
+
+        # Calculate bias of mean forecast
+        scores_pp["e_me"] = f[:, 0] - y
+
+        # Calculate bias of median forecast
+        if "e_md" in scores_pp.columns:
+            scores_pp["e_md"] = (
+                ss.truncnorm.ppf(q=0.5, loc=f[:, 0], scale=f[:, 1], a=a, b=b)
+                - y
+            )
+
+        ### Output ###
+        # Skip evaluation measures
+        if skip_evals is not None:
+            scores_pp.drop(columns=skip_evals, inplace=True)
+    # Return
+    return scores_pp
