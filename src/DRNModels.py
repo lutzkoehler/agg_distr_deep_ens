@@ -545,6 +545,37 @@ class DRNDropoutModel(DRNBaseModel):
         # Return model
         return model
 
+    def predict(self, X_test: NDArray) -> None:
+        # Scale data for prediction
+        self.n_test = X_test.shape[0]
+        X_pred = (X_test - self.tr_center) / self.tr_scale  # type: ignore
+
+        ### Prediciton ###
+        # Take time
+        start_tm = time.time_ns()
+
+        # Predict 10_000 times
+        # mc_pred: NDArray[Any, Float] = np.array(
+        #     [
+        #         self.model.predict(
+        #             X_pred, batch_size=500, verbose=self.hpar["nn_verbose"]
+        #         )
+        #         for _ in range(1_000)
+        #     ]
+        # )
+        # self.f = np.mean(mc_pred, axis=0)
+
+        # Predict parameters of distributional forecasts (on scaled data)
+        self.f: NDArray[Any, Float] = self.model.predict(
+            X_pred, verbose=self.hpar["nn_verbose"]
+        )
+
+        # Take time
+        end_tm = time.time_ns()
+
+        # Time needed
+        self.runtime_pred = end_tm - start_tm
+
 
 class DRNBayesianModel(DRNBaseModel):
     def __init__(
@@ -1072,7 +1103,7 @@ class DRNBatchEnsembleModel(DRNBaseModel):
             distr, lower, upper = self.hpar["loss"]
             # Calculate evaluation measres of DRN forecasts
             scores = fn_scores_distr(
-                f=self.f,
+                f=f,
                 y=y_test,
                 distr=distr,
                 lower=lower,
@@ -1115,10 +1146,10 @@ class DRNEvaModel(DRNBaseModel):
             {
                 "training": True,
                 "p_dropout": kwargs["p_dropout"],
-                "p_dropout_input": 0,
-                "upscale_units": True,
+                "p_dropout_input": kwargs["p_dropout"],
+                "upscale_units": False,
                 "n_batch": 128,
-                "n_epochs": 4_000,
+                "n_epochs": 400,
                 "actv": "relu",
                 "tau": kwargs["tau"],
                 "adam": -1,
@@ -1260,11 +1291,15 @@ class DRNEvaModel(DRNBaseModel):
 
         with localconverter(np_cv_rules) as cv:  # noqa: F841
             crps = np.mean(
-                scoring_rules.crps_sample(y=y_vector, dat=self.mc_pred)
+                scoring_rules.crps_mixnorm(
+                    y=y_vector, m=self.mc_pred, s=1 / np.sqrt(self.hpar["tau"])
+                )
             )
 
         crps_eva = crps_mixnorm_mc(
-            self.mc_pred.reshape((1, self.mc_pred.shape[0])), y_test, 1
+            self.mc_pred.reshape((1, self.mc_pred.shape[0])),
+            y_test,
+            (1 / np.sqrt(self.hpar["tau"])),
         )
 
         rmse = (

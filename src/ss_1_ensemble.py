@@ -554,7 +554,8 @@ def run_eva_multi_model(
     ens_method: str = "mc_dropout",
     nn_deep_arch: list[Any] | None = None,
 ) -> None:
-    """Run and train a model type n_ens times
+    """Reproduces MC dropout results from Walz et al. (2022)
+    based on Gal & Ghahramani (2015).
 
     Saves the following information to a pickle file:
     [pred_nn, y_valid, y_test]
@@ -602,21 +603,19 @@ def run_eva_multi_model(
     # Read out class
     model_class = get_model_class("drn", "eva")
 
-    # Set seed (same for each network variant)
-    np.random.seed(123 + 100 * i_sim)
-
     ### Run grid search ###
-    grid = {
+    # !Grid search parameter are for boston housing dataset only!
+    param_grid = {
         "p_dropout": [0.005, 0.01, 0.05, 0.1],
-        "tau": [0.025, 0.05, 0.075],
+        "tau": [0.1, 0.15, 0.2],
     }
 
     best_p_dropout = 0
     best_tau = 0
-    best_ll = float("inf")
+    best_crps = float("inf")
 
-    for p_dropout in grid["p_dropout"]:
-        for tau in grid["tau"]:
+    for p_dropout in param_grid["p_dropout"]:
+        for tau in param_grid["tau"]:
             # Create model
             model = model_class(
                 nn_deep_arch=[],
@@ -663,8 +662,8 @@ def run_eva_multi_model(
                     + "\n"
                 )
 
-            if pred_nn["crps"] < best_ll:
-                best_ll = pred_nn["crps"]
+            if pred_nn["crps"] < best_crps:
+                best_crps = pred_nn["crps"]
                 best_tau = tau
                 best_p_dropout = p_dropout
 
