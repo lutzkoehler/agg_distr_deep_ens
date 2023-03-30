@@ -112,6 +112,16 @@ def main():
 
     ### Create data frame ###
     df_scores = pd.DataFrame(columns=col_vec_pp)
+    df_runtime = pd.DataFrame(
+        columns=[
+            "i_sim",
+            "i_ens",
+            "nn",
+            "dataset",
+            "runtime_train",
+            "runtime_pred",
+        ]
+    )
 
     # For-Loop over scenarios and simulations
     for dataset in dataset_ls:
@@ -270,6 +280,28 @@ def main():
                         ignore_index=True,
                     )
 
+                    ### Save runtime ###
+                    runtime_train = pred_nn["runtime_est"]
+                    runtime_pred = pred_nn["runtime_pred"]
+
+                    new_row = {
+                        "i_sim": i_sim,
+                        "i_ens": i_rep,
+                        "nn": temp_nn,
+                        "dataset": dataset,
+                        "runtime_train": runtime_train,
+                        "runtime_pred": runtime_pred,
+                    }
+
+                    # Append to data frame
+                    df_runtime = pd.concat(
+                        [
+                            df_runtime,
+                            pd.DataFrame(new_row, index=[0]),
+                        ],
+                        ignore_index=True,
+                    )
+
                 ### Read out scores for aggregated ensembles ###
                 # For-Loop over aggregation methods
                 for temp_agg in agg_meths:
@@ -374,11 +406,17 @@ def main():
         # Take time
         end_time = time_ns()
 
-        ### Save ###d
+        ### Save ###
         filename = f"eval_{dataset}_{ens_method}.pkl"
         temp_data_out_path = data_out_path.replace("dataset", dataset)
         with open(os.path.join(temp_data_out_path, filename), "wb") as f:
             pickle.dump(df_scores, f)
+        # Save runtime dataframe
+        filename = f"runtime_{dataset}_{ens_method}.pkl"
+        temp_data_out_path = data_out_path.replace("dataset", dataset)
+        with open(os.path.join(temp_data_out_path, filename), "wb") as f:
+            pickle.dump(df_runtime, f)
+
         print(
             f"{dataset.upper()}, {ens_method}: Finished scoring of {filename}",
             f"- {(end_time - start_time) / 1e+9:.2f}s",
