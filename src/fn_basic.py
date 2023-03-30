@@ -31,7 +31,6 @@ def fn_upit(ranks, max_rank):
     return res
 
 
-### Update hyperparameters ###
 def update_hpar(
     hpar_ls: dict[str, Any], in_ls: dict[str, Any]
 ) -> dict[str, Any]:
@@ -69,25 +68,3 @@ def update_hpar(
     #### Output ####
     # Return list
     return hpar_ls
-
-
-# rm_const is only used in fn_nn_cs.py
-# Thus, for now not necessary to implement.
-"""
-def rm_const(data: pd.DataFrame, cols=None, t_c=0):
-
-    ### Initiation ###
-    if cols is None:
-        cols = data.columns
-
-    ### Remove columns ###
-    # Number of samples to check with
-    n_check = min(10, data.shape[0])
-
-    # Check on sample which rows are candidates (-> computational more
-    # feasible)
-    # bool_res <- (apply(data[sample(1:nrow(data), n_check),], 2, function(x)
-    # sd(as.numeric(x)) ) <= t_c)
-    random_indexes = np.random.randint(a=data.shape[0], size=n_check)
-    bool_res = np.std(a=data[random_indexes, :], axis=0)
-"""

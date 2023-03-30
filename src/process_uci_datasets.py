@@ -8,6 +8,11 @@ from ss_1_ensemble import train_valid_test_split
 
 
 def main():
+    """
+    Takes the original input of UCI datasets from
+    https://github.com/yaringal/DropoutUncertaintyExps
+    and saves the data in the pickle format used in this repo.
+    """
     ### Get Config ###
     with open("src/config.json", "rb") as f:
         CONFIG = json.load(f)

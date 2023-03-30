@@ -25,6 +25,11 @@ from fn_eval import bern_quants, fn_scores_ens
 
 
 class BQNBaseModel(BaseModel):
+    """
+    Represents the base class for Bernstein Quantile Networks.
+    For a documentation of the methods look at BaseModel
+    """
+
     def __init__(
         self,
         nn_deep_arch: list[Any],
@@ -266,35 +271,11 @@ class BQNBaseModel(BaseModel):
 
 
 class BQNRandInitModel(BQNBaseModel):
+    """
+    Class represents the naive ensemble method for BQNs.
+    """
+
     def _get_architecture(self, n_samples: int, n_features: int) -> Model:
-        """Construct and return BQN base model
-
-        Architecture:
-
-        Layer (type)                Output Shape  Param #  Connected to
-        ====================================================================
-        input (InputLayer)          [(None, 5)]   0        []
-        dense_1 (Dense)             (None, 64)    384      ['input[0][0]']
-        dense_2 (Dense)             (None, 32)    2080     ['dense_1[0][0]']
-        dense_3 (Dense)             (None, 1)     33       ['dense_2[0][0]']
-        dense_4 (Dense)             (None, 12)    396      ['dense_2[0][0]']
-        concatenate (Concatenate)   (None, 13)    0        ['dense_3[0][0]',
-                                                            'dense_4[0][0]']
-
-        Parameters
-        ----------
-        input_length : int
-            Number of predictors
-        hpar_ls : dict[str, Any]
-            Contains several hyperparameter
-        dtype : str
-            Should be either float32 or float64
-
-        Returns
-        -------
-        Model
-            _description_
-        """
         tf.keras.backend.set_floatx(self.dtype)
 
         ### Build network ###
@@ -343,6 +324,10 @@ class BQNRandInitModel(BQNBaseModel):
 
 
 class BQNDropoutModel(BQNBaseModel):
+    """
+    Class represents the MC dropout method for BQNs.
+    """
+
     def __init__(
         self,
         nn_deep_arch: list[Any],
@@ -372,34 +357,6 @@ class BQNDropoutModel(BQNBaseModel):
         )
 
     def _get_architecture(self, n_samples: int, n_features: int) -> Model:
-        """Construct and return BQN base model
-
-        Architecture:
-
-        Layer (type)                Output Shape  Param #  Connected to
-        ====================================================================
-        input (InputLayer)          [(None, 5)]   0        []
-        dense_1 (Dense)             (None, 64)    384      ['input[0][0]']
-        dense_2 (Dense)             (None, 32)    2080     ['dense_1[0][0]']
-        dense_3 (Dense)             (None, 1)     33       ['dense_2[0][0]']
-        dense_4 (Dense)             (None, 12)    396      ['dense_2[0][0]']
-        concatenate (Concatenate)   (None, 13)    0        ['dense_3[0][0]',
-                                                            'dense_4[0][0]']
-
-        Parameters
-        ----------
-        input_length : int
-            Number of predictors
-        hpar_ls : dict[str, Any]
-            Contains several hyperparameter
-        dtype : str
-            Should be either float32 or float64
-
-        Returns
-        -------
-        Model
-            _description_
-        """
         tf.keras.backend.set_floatx(self.dtype)
 
         # Extract params
@@ -466,6 +423,10 @@ class BQNDropoutModel(BQNBaseModel):
 
 
 class BQNBayesianModel(BQNBaseModel):
+    """
+    Class represents the Bayesian NN method for BQNs.
+    """
+
     def __init__(
         self,
         nn_deep_arch: list[Any],
@@ -516,9 +477,7 @@ class BQNBayesianModel(BQNBaseModel):
                     kl_weight=1 / n_samples,
                     activation=self.hpar["actv"],
                     dtype=self.dtype,
-                )(
-                    input
-                )  # TODO: Is training parameter needed?
+                )(input)
             else:
                 hidden_layer = tfp.layers.DenseVariational(
                     units=layer_info[1],
@@ -662,6 +621,10 @@ class BQNBayesianModel(BQNBaseModel):
 
 
 class BQNVariationalDropoutModel(BQNBaseModel):
+    """
+    Class represents the variational dropout method for BQNs.
+    """
+
     def _get_architecture(self, n_samples: int, n_features: int) -> Model:
         tf.keras.backend.set_floatx(self.dtype)
 
@@ -711,6 +674,10 @@ class BQNVariationalDropoutModel(BQNBaseModel):
 
 
 class BQNConcreteDropoutModel(BQNBaseModel):
+    """
+    Class represents the concrete dropout method for BQNs.
+    """
+
     def __init__(
         self,
         nn_deep_arch: list[Any],
@@ -809,6 +776,10 @@ class BQNConcreteDropoutModel(BQNBaseModel):
 
 
 class BQNBatchEnsembleModel(BQNBaseModel):
+    """
+    Class represents the BatchEnsemble method for BQNs.
+    """
+
     def __init__(
         self,
         nn_deep_arch: list[Any],
@@ -837,8 +808,6 @@ class BQNBatchEnsembleModel(BQNBaseModel):
 
     def _get_architecture(self, n_samples: int, n_features: int) -> Model:
         tf.keras.backend.set_floatx(self.dtype)
-
-        ### Calculate batch size ###
 
         ### Build network ###
         # Input

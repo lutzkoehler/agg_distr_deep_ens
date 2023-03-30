@@ -19,7 +19,11 @@ from fn_eval import fn_scores_distr, fn_scores_ens
 
 
 def simulate_data(i_scenario: int, i_sim: int, data_out_path: str) -> None:
-    """Simulates data based on 6 scenarios
+    """
+    Simulates data based on 6 scenarios.
+    See Schulz & Lerch (2022): Aggregating distribution forecasts from deep
+    ensembles
+    and Li et al. (2021): Deep distribution regression
 
     Saves the following information to a pickle file:
     [X_train, y_train, X_test, y_test, f_opt, scores_opt]

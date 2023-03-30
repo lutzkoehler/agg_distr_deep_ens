@@ -92,7 +92,8 @@ def bern_quants(alpha, q_levels):
 
 ### ENS: Evaluation of ensemble ###
 def fn_scores_ens(ens, y, skip_evals=None, scores_ens=True, rpy_elements=None):
-    """Function to calculate evaluation measures of scores
+    """
+    Scores a forecast based forecasted and 'true' samples.
 
     Parameters
     ----------
@@ -256,7 +257,14 @@ def fn_scores_distr(
     skip_evals=None,
     rpy_elements=None,
 ) -> pd.DataFrame:  # type: ignore
-    """Function for prediciton based on the distributional parameters
+    """
+    Scores a forecast based on the distributional parameters.
+    Differentiate between 4 possible distributions:
+
+    - tlogis: Truncated logistic distribution.
+    - normal: Normal distribution.
+    - 0tnorm: 0-truncated normal distribution.
+    - tnorm: upper-lower truncated normal distribution.
 
     Parameters
     ----------

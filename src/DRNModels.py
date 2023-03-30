@@ -27,6 +27,11 @@ from fn_eval import fn_scores_distr
 
 
 class DRNBaseModel(BaseModel):
+    """
+    Represents the base class for Deep Regression Networks.
+    For a documentation of the methods look at BaseModel
+    """
+
     def __init__(
         self,
         nn_deep_arch: list[Any],
@@ -49,7 +54,7 @@ class DRNBaseModel(BaseModel):
             "nn_verbose": 0,
             "run_eagerly": False,
         }
-        self.hpar.update({"loss": kwargs["loss"]})
+        self.hpar.update({"loss": kwargs.get("loss")})
 
     def _build(self, n_samples: int, n_features: int) -> Model:
         # Custom optizimer
@@ -79,11 +84,7 @@ class DRNBaseModel(BaseModel):
 
     def _get_loss(self):
         # Get standard logistic distribution
-        tfd = tfp.distributions.Normal(
-            loc=0,
-            scale=1
-            # loc=np.float64(0), scale=np.float64(1)
-        )  # , dtype=tf.float64)
+        tfd = tfp.distributions.Normal(loc=0, scale=1)
 
         # Lower and Upper bound
         loss, lower, upper = self.hpar["loss"]
@@ -339,6 +340,10 @@ class DRNBaseModel(BaseModel):
         }
 
     def _get_mu_activation_function(self):
+        """
+        Creates and returns the activation function for parameter mu.
+        Depends on what target distribution is chosen (trucnated or not).
+        """
         if self.hpar["loss"][0] == "0tnorm":
             return "softplus"
         elif self.hpar["loss"][0] == "tnorm":
@@ -357,35 +362,11 @@ class DRNBaseModel(BaseModel):
 
 
 class DRNRandInitModel(DRNBaseModel):
+    """
+    Class represents the naive ensemble method for DRNs.
+    """
+
     def _get_architecture(self, n_samples: int, n_features: int) -> Model:
-        """Construct and return DRN base model
-
-        Architecture:
-
-        Layer (type)                Output Shape    Param #  Connected to
-        =========================================================================
-        input (InputLayer)          [(None, 5)]     0        []
-        dense_1 (Dense)             (None, 64)      384      ['input[0][0]']
-        dense_2 (Dense)             (None, 32)      2080     ['dense_1[0][0]']
-        dense_3 (Dense)             (None, 1)       33       ['dense_2[0][0]']
-        dense_4 (Dense)             (None, 1)       33       ['dense_2[0][0]']
-        concatenate (Concatenate)   (None, 2)       0        ['dense_3[0][0]',
-                                                            'dense_4[0][0]']
-
-        Parameters
-        ----------
-        input_length : int
-            Number of predictors
-        hpar_ls : dict[str, Any]
-            Contains several hyperparameter
-        dtype : str
-            Should be either float32 or float64
-
-        Returns
-        -------
-        Model
-            _description_
-        """
         tf.keras.backend.set_floatx(self.dtype)
 
         ### Build network ###
@@ -430,6 +411,10 @@ class DRNRandInitModel(DRNBaseModel):
 
 
 class DRNDropoutModel(DRNBaseModel):
+    """
+    Class represents the MC dropout method for DRNs.
+    """
+
     def __init__(
         self,
         nn_deep_arch: list[Any],
@@ -453,37 +438,6 @@ class DRNDropoutModel(DRNBaseModel):
         )
 
     def _get_architecture(self, n_samples: int, n_features: int) -> Model:
-        """Construct and return DRN base model
-
-        Architecture:
-
-        Layer (type)                Output Shape    Param # Connected to
-        =======================================================================
-        input (InputLayer)          [(None, 5)]     0       []
-        dropout (Dropout)           (None, 5)       0       ['input[0][0]']
-        dense (Dense)               (None, 128)     768     ['dropout[0][0]']
-        dropout_1 (Dropout)         (None, 128)     0       ['dense[0][0]']
-        dense_1 (Dense)             (None, 64)      8256    ['dropout_1[0][0]']
-        dropout_2 (Dropout)         (None, 64)      0       ['dense_1[0][0]']
-        dense_2 (Dense)             (None, 1)       65      ['dropout_2[0][0]']
-        dense_3 (Dense)             (None, 1)       65      ['dropout_2[0][0]']
-        concatenate (Concatenate)   (None, 2)       0       ['dense_2[0][0]',
-                                                             'dense_3[0][0]']
-
-        Parameters
-        ----------
-        input_length : int
-            Number of predictors
-        hpar_ls : dict[str, Any]
-            Contains several hyperparameter
-        dtype : str
-            Should be either float32 or float64
-
-        Returns
-        -------
-        Model
-            _description_
-        """
         tf.keras.backend.set_floatx(self.dtype)
 
         # Extract params
@@ -578,6 +532,10 @@ class DRNDropoutModel(DRNBaseModel):
 
 
 class DRNBayesianModel(DRNBaseModel):
+    """
+    Class represents the Bayesian NN method for DRNs.
+    """
+
     def __init__(
         self,
         nn_deep_arch: list[Any],
@@ -628,9 +586,7 @@ class DRNBayesianModel(DRNBaseModel):
                     kl_weight=1 / n_samples,
                     activation=self.hpar["actv"],
                     dtype=self.dtype,
-                )(
-                    input
-                )  # TODO: Is training parameter needed?
+                )(input)
             else:
                 hidden_layer = tfp.layers.DenseVariational(
                     units=layer_info[1],
@@ -777,6 +733,10 @@ class DRNBayesianModel(DRNBaseModel):
 
 
 class DRNVariationalDropoutModel(DRNBaseModel):
+    """
+    Class represents the variational dropout method for DRNs.
+    """
+
     def __init__(
         self,
         nn_deep_arch: list[Any],
@@ -840,6 +800,10 @@ class DRNVariationalDropoutModel(DRNBaseModel):
 
 
 class DRNConcreteDropoutModel(DRNBaseModel):
+    """
+    Class represents the concrete dropout method for DRNs.
+    """
+
     def __init__(
         self,
         nn_deep_arch: list[Any],
@@ -927,6 +891,10 @@ class DRNConcreteDropoutModel(DRNBaseModel):
 
 
 class DRNBatchEnsembleModel(DRNBaseModel):
+    """
+    Class represents the BatchEnsemble method for DRNs.
+    """
+
     def __init__(
         self,
         nn_deep_arch: list[Any],
@@ -948,8 +916,6 @@ class DRNBatchEnsembleModel(DRNBaseModel):
 
     def _get_architecture(self, n_samples: int, n_features: int) -> Model:
         tf.keras.backend.set_floatx(self.dtype)
-
-        ### Calculate batch size ###
 
         ### Build network ###
         # Input
@@ -1024,6 +990,9 @@ class DRNBatchEnsembleModel(DRNBaseModel):
         return model
 
     def predict(self, X_test: NDArray) -> None:
+        """
+        Adjust predict method for BatchEnsemble model with only one ensemble.
+        """
         # Scale data for prediction
         self.n_test = X_test.shape[0]
         X_pred = (X_test - self.tr_center) / self.tr_scale  # type: ignore
@@ -1080,6 +1049,9 @@ class DRNBatchEnsembleModel(DRNBaseModel):
         self.runtime_pred = end_tm - start_tm
 
     def _build_single_model(self, n_samples, n_features):
+        """
+        Builds a BatchEnsemble of size 1.
+        """
         # Save originial n_ens
         n_ens_original = self.n_ens
 
@@ -1130,6 +1102,14 @@ class DRNBatchEnsembleModel(DRNBaseModel):
 
 
 class DRNEvaModel(DRNBaseModel):
+    """
+    Implements the NN architecture used in Walz et al. (2022).
+    Is used to replicate the MC dropout scores published in the paper
+    stated above.
+    Walz et al. (2022) in turn bases the MC dropout experiments on
+    Gal & Ghahramani (2015).
+    """
+
     def __init__(
         self,
         nn_deep_arch: list[Any],
@@ -1218,9 +1198,6 @@ class DRNEvaModel(DRNBaseModel):
         # Scale training data
         X_train = (X_train - self.tr_center) / self.tr_scale  # type: ignore
 
-        # Scale validation data with training data attributes
-        X_valid = (X_valid - self.tr_center) / self.tr_scale  # type: ignore
-
         # Scale y train
         self.y_center = np.mean(y_train, axis=0)
         self.y_scale = np.std(y_train, axis=0)
@@ -1289,13 +1266,21 @@ class DRNEvaModel(DRNBaseModel):
 
         y_vector = vectors.FloatVector(y_test)
 
+        # Calculate CRPS (mixnorm) using the R package 'scoringRules'
         with localconverter(np_cv_rules) as cv:  # noqa: F841
             crps = np.mean(
                 scoring_rules.crps_mixnorm(
-                    y=y_vector, m=self.mc_pred, s=1 / np.sqrt(self.hpar["tau"])
+                    y=y_vector,
+                    m=self.mc_pred,
+                    s=np.full(
+                        shape=self.mc_pred.shape,
+                        fill_value=1 / np.sqrt(self.hpar["tau"]),
+                    ),
                 )
             )
 
+        # Calculate CRPS using Eva's implementation
+        # Should equal crps_mixnorm() from 'scoringRules'
         crps_eva = crps_mixnorm_mc(
             self.mc_pred.reshape((1, self.mc_pred.shape[0])),
             y_test,
@@ -1325,7 +1310,6 @@ class DRNEvaModel(DRNBaseModel):
             "crps_eva": crps_eva,
             "logl": test_ll,
             "nn_ls": self.hpar,
-            # "scores": scores,
             "n_train": self.n_train,
             "n_valid": self.n_valid,
             "n_test": self.n_test,
