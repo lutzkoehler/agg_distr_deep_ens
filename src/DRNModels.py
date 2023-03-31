@@ -1,4 +1,5 @@
 import copy
+import logging
 import time
 from typing import Any
 
@@ -7,9 +8,11 @@ import keras.backend as K
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
-from concretedropout.tensorflow import (ConcreteDenseDropout,
-                                        get_dropout_regularizer,
-                                        get_weight_regularizer)
+from concretedropout.tensorflow import (
+    ConcreteDenseDropout,
+    get_dropout_regularizer,
+    get_weight_regularizer,
+)
 from crpsmixture import crps_mixnorm_mc
 from nptyping import Float, NDArray
 from rpy2.robjects import vectors
@@ -495,7 +498,6 @@ class DRNDropoutModel(DRNBaseModel):
         # Define model
         model = Model(inputs=input, outputs=output)
 
-        # print(self.deep_arch)
         # Return model
         return model
 
@@ -887,7 +889,8 @@ class DRNConcreteDropoutModel(DRNBaseModel):
                 self.p_dropout.append(
                     tf.nn.sigmoid(layer.trainable_variables[0]).numpy()[0]
                 )
-        print(f"Learned Dropout rates: {self.p_dropout}")
+        log_message = f"Learned Dropout rates: {self.p_dropout}"
+        logging.info(log_message)
 
 
 class DRNBatchEnsembleModel(DRNBaseModel):

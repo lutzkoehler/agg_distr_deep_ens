@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import pickle
 
@@ -56,8 +57,12 @@ def main():
             save_path = os.path.join(temp_data_in_path, f"sim_{i_sim}.pkl")
             with open(save_path, "wb") as f:
                 pickle.dump([X_train, y_train, X_test, y_test, None, None], f)
-            print(f"Processed sim_{i_sim} of dataset {dataset.upper()}")
+            log_message = f"Processed sim_{i_sim} of dataset {dataset.upper()}"
+            logging.info(log_message)
 
 
 if __name__ == "__main__":
+    ### Set log Level ###
+    logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
+
     main()

@@ -1,6 +1,7 @@
 ## Script for evaluation of aggregation methods of NN methods
 
 import json
+import logging
 import os
 import pickle
 
@@ -192,7 +193,8 @@ def plot_example_aggregation():
 
     # Save fig
     fig.savefig(filename)
-    print(f"Example aggregation saved to {filename}")
+    log_message = f"Example aggregation saved to {filename}"
+    logging.info(log_message)
 
 
 def plot_panel_model():
@@ -442,7 +444,8 @@ def plot_panel_model():
         # Save fig
         filename = os.path.join(plot_path, f"{dataset}_panel.pdf")
         fig.savefig(filename)
-        print(f"Panel saved to {filename}")
+        log_message = f"Panel saved to {filename}"
+        logging.info(log_message)
 
 
 def plot_panel_boxplot():
@@ -561,7 +564,8 @@ def plot_panel_boxplot():
         # Save fig
         filename = os.path.join(plot_path, f"{dataset}_crpss_boxplots.pdf")
         fig.savefig(filename)
-        print(f"CRPSS boxplots saved to {filename}")
+        log_message = f"CRPSS boxplots saved to {filename}"
+        logging.info(log_message)
 
 
 def plot_pit_ens():
@@ -746,7 +750,8 @@ def plot_pit_ens():
         # Save fig
         filename = os.path.join(plot_path, f"{dataset}_pit_ens.pdf")
         fig.savefig(filename)
-        print(f"PIT saved to {filename}")
+        log_message = f"PIT saved to {filename}"
+        logging.info(log_message)
 
 
 def plot_ensemble_members():
@@ -977,7 +982,8 @@ def plot_ensemble_members():
         # Save fig
         filename = os.path.join(plot_path, f"{dataset}_ensemble_members.pdf")
         fig.savefig(filename)
-        print(f"Ensemble members saved to {filename}")
+        log_message = f"Ensemble members saved to {filename}"
+        logging.info(log_message)
 
 
 def _get_config_info():
@@ -1117,10 +1123,11 @@ agg_lty = {
 
 
 if __name__ == "__main__":
+    ### Set log Level ###
+    logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
+
     ### Call plot functions ###
-
     # plot_example_aggregation()
-
     plot_panel_model()
     plot_panel_boxplot()
     plot_pit_ens()

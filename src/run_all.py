@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 
 import tensorflow as tf
@@ -16,10 +17,12 @@ if __name__ == "__main__":
     #### Limit cores to use ####
     tf.config.threading.set_intra_op_parallelism_threads(3)
     tf.config.threading.set_inter_op_parallelism_threads(3)
-    # tf.config.set_soft_device_placement(True)
+
+    ### Set log Level ###
+    logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
 
     #### More specifications ####
-    multi_run = True
+    multi_run = False
 
     methods = [
         "rand_init",
@@ -40,7 +43,8 @@ if __name__ == "__main__":
             with open("src/config.json", "wt") as f:
                 json.dump(CONFIG, f)
 
-            print(f"#### Running {ens_method} ####")
+            logging.info(f"#### Running {ens_method} ####")
+
             # 1. Run ensemble prediction
             ss_1_ensemble.main()
 

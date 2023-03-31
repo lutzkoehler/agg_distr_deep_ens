@@ -1,5 +1,6 @@
 ## Function file
 # Evaluation of probabilistic forecasts
+import logging
 
 import numpy as np
 import pandas as pd
@@ -316,7 +317,7 @@ def fn_scores_distr(
 
     # Input check
     if (distr not in ["tlogis", "norm"]) & any(f[:, 1] < 0):
-        print("Non-positive scale forecast!")
+        logging.error("Non-positive scale forecast!")
 
     ### Data preparation ###
     # Number of predictions

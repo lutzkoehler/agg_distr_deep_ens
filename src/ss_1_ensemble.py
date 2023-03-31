@@ -3,6 +3,7 @@
 
 
 import json
+import logging
 import os
 import pickle
 import time
@@ -153,11 +154,12 @@ def run_ensemble_parallel_model(
             # transformed to n_ens BatchEnsemble models each of n_ens = 1
 
             total_samples_added = n_train_to_add + n_valid_to_add
-            print(
-                f"Added {total_samples_added} samples due to BatchEnsemble"
-                f" (train: {n_train_to_add},",
-                f"valid: {n_valid_to_add})",
+            log_message = (
+                f"Added {total_samples_added} samples due to BatchEnsemble "
+                f"(train: {n_train_to_add}, "
+                f"valid: {n_valid_to_add})"
             )
+            logging.warning(log_message)
 
         # Build model
         model.fit(
@@ -166,11 +168,12 @@ def run_ensemble_parallel_model(
             X_valid=X_valid,
             y_valid=y_valid,
         )
-        print(
-            f"{dataset.upper()}, {temp_nn.upper()}: Finished training of",
-            f"{temp_nn}_sim_{i_sim}_ens_0.pkl",
-            f"- {(model.runtime_est)/1e+9:.2f}s",
+        log_message = (
+            f"{dataset.upper()}, {temp_nn.upper()}: Finished training of "
+            f"{temp_nn}_sim_{i_sim}_ens_0.pkl "
+            f"- {(model.runtime_est)/1e+9:.2f}s"
         )
+        logging.info(log_message)
 
         # Take time
         start_time = time.time_ns()
@@ -207,16 +210,18 @@ def run_ensemble_parallel_model(
 
             # Check for NaNs in predictions
             if np.any(np.isnan(current_pred_nn["f"])):
-                print(f"NaNs predicted in {temp_data_out_path}")
+                log_message = f"NaNs predicted in {temp_data_out_path}"
+                logging.error(log_message)
 
             with open(temp_data_out_path, "wb") as f:
                 pickle.dump([current_pred_nn, y_valid, y_test], f)
 
-            print(
-                f"{dataset.upper()}, {temp_nn.upper()}:",
-                f"Finished prediction of {filename} -",
-                f"{(end_time - start_time)/1e+9:.2f}s",
+            log_message = (
+                f"{dataset.upper()}, {temp_nn.upper()}: "
+                f"Finished prediction of {filename} - "
+                f"{(end_time - start_time)/1e+9:.2f}s"
             )
+            logging.info(log_message)
 
         del model
 
@@ -317,11 +322,12 @@ def run_ensemble_single_model(
             X_valid=X_valid,
             y_valid=y_valid,
         )
-        print(
-            f"{dataset.upper()}, {temp_nn.upper()}: Finished training of",
-            f"{temp_nn}_sim_{i_sim}_ens_0.pkl",
-            f"- {(model.runtime_est)/1e+9:.2f}s",
+        log_message = (
+            f"{dataset.upper()}, {temp_nn.upper()}: Finished training of "
+            f"{temp_nn}_sim_{i_sim}_ens_0.pkl "
+            f"- {(model.runtime_est)/1e+9:.2f}s"
         )
+        logging.info(log_message)
 
         # For-Loop over ensemble member
         for i_ens in range(n_ens):
@@ -375,16 +381,18 @@ def run_ensemble_single_model(
 
             # Check for NaNs in predictions
             if np.any(np.isnan(pred_nn["f"])):
-                print(f"NaNs predicted in {temp_data_out_path}")
+                log_message = f"NaNs predicted in {temp_data_out_path}"
+                logging.error(log_message)
 
             with open(temp_data_out_path, "wb") as f:
                 pickle.dump([pred_nn, y_valid, y_test], f)
 
-            print(
-                f"{dataset.upper()}, {temp_nn.upper()}:",
-                f"Finished prediction of {filename} -",
-                f"{(end_time - start_time)/1e+9:.2f}s",
+            log_message = (
+                f"{dataset.upper()}, {temp_nn.upper()}: "
+                f"Finished prediction of {filename} - "
+                f"{(end_time - start_time)/1e+9:.2f}s"
             )
+            logging.warning(log_message)
 
         del model
 
@@ -505,6 +513,13 @@ def run_ensemble_multi_model(
                 y_valid=y_valid,
             )
 
+            log_message = (
+                f"{dataset.upper()}, {temp_nn.upper()}: "
+                f"Finished training of {temp_nn}_sim_{i_sim}_ens_{i_ens}.pkl - "
+                f"{(model.runtime_est)/1e+9:.2f}s"
+            )
+            logging.info(log_message)
+
             # Make prediction
             model.predict(X_test=np.r_[X_valid, X_test])
 
@@ -533,11 +548,12 @@ def run_ensemble_multi_model(
             with open(temp_data_out_path, "wb") as f:
                 pickle.dump([pred_nn, y_valid, y_test], f)
 
-            print(
+            log_message = (
                 f"{dataset.upper()}, {temp_nn.upper()}:",
-                f"Finished training of {filename} -",
+                f"Finished prediction of {filename} -",
                 f"{(end_time - start_time)/1e+9:.2f}s",
             )
+            logging.info(log_message)
 
             del model
 
@@ -667,7 +683,8 @@ def run_eva_multi_model(
                 best_tau = tau
                 best_p_dropout = p_dropout
 
-            print(f"Finished {i_sim} with {p_dropout} / {tau}")
+            log_message = f"Finished {i_sim} with {p_dropout} / {tau}"
+            logging.info(log_message)
 
             del model
             del pred_nn
@@ -720,7 +737,10 @@ def run_eva_multi_model(
     del model
     del pred_nn
 
-    print(f"Finished best model {i_sim} with {best_p_dropout} / {best_tau}")
+    log_message = (
+        f"Finished best model {i_sim} with {best_p_dropout} / {best_tau}"
+    )
+    logging.info(log_message)
 
 
 def get_model_class(temp_nn: str, ens_method: str) -> Type[BaseModel]:
@@ -968,4 +988,8 @@ if __name__ == "__main__":
     #### Limit cores to use ####
     tf.config.threading.set_intra_op_parallelism_threads(3)
     tf.config.threading.set_inter_op_parallelism_threads(3)
+
+    ### Set log Level ###
+    logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
+
     main()

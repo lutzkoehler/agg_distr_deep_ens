@@ -1,4 +1,5 @@
 import copy
+import logging
 import time
 from typing import Any
 
@@ -772,7 +773,8 @@ class BQNConcreteDropoutModel(BQNBaseModel):
                 self.p_dropout.append(
                     tf.nn.sigmoid(layer.trainable_variables[0]).numpy()[0]
                 )
-        print(f"Learned Dropout rates: {self.p_dropout}")
+        log_message = f"Learned Dropout rates: {self.p_dropout}"
+        logging.info(log_message)
 
 
 class BQNBatchEnsembleModel(BQNBaseModel):

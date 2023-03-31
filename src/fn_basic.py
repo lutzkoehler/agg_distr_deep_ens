@@ -1,6 +1,7 @@
 ## Function file
 # Helper functions
 
+import logging
 from typing import Any
 
 import numpy as np
@@ -63,7 +64,8 @@ def update_hpar(
         if temp_hpar in hpar_names:
             hpar_ls[temp_hpar] = in_ls[temp_hpar]
         else:
-            print(f"Wrong hyperparameter given: {temp_hpar}")
+            log_message = f"Wrong hyperparameter given: {temp_hpar}"
+            logging.error(log_message)
 
     #### Output ####
     # Return list

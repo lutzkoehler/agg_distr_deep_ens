@@ -3,6 +3,7 @@
 
 import itertools
 import json
+import logging
 import os
 import pickle
 from typing import Any
@@ -288,10 +289,13 @@ def simulate_data(i_scenario: int, i_sim: int, data_out_path: str) -> None:
     )
     with open(save_path, "wb") as f:
         pickle.dump([X_train, y_train, X_test, y_test, f_opt, scores_opt], f)
-    print(f"Finished run {i_sim} of scenario {i_scenario}")
+    logging.info(f"Finished simulation {i_sim} of scenario {i_scenario}")
 
 
 if __name__ == "__main__":
+    ### Set log Level ###
+    logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
+
     ### Get Config ###
     with open("src/config.json", "rb") as f:
         CONFIG = json.load(f)

@@ -2,6 +2,7 @@
 # Scores of deep ensembles and aggregated forecasts
 
 import json
+import logging
 import os
 import pickle
 from time import time_ns
@@ -417,12 +418,16 @@ def main():
         with open(os.path.join(temp_data_out_path, filename), "wb") as f:
             pickle.dump(df_runtime, f)
 
-        print(
-            f"{dataset.upper()}, {ens_method}: Finished scoring of {filename}",
-            f"- {(end_time - start_time) / 1e+9:.2f}s",
+        log_message = (
+            f"{dataset.upper()}, {ens_method}: Finished scoring of {filename} "
+            f"- {(end_time - start_time) / 1e+9:.2f}s"
         )
+        logging.info(log_message)
 
 
 if __name__ == "__main__":
+    ### Set log Level ###
+    logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
+
     # np.seterr(all="raise")
     main()

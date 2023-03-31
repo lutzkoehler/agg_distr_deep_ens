@@ -3,6 +3,7 @@
 
 # import concurrent.futures
 import json
+import logging
 import os
 import pickle
 from functools import partial
@@ -323,6 +324,15 @@ def fn_mc(
                     for i in range(len(y_test))
                 ]
             )
+
+            # If nans get drawn: replace by mean
+            if np.any(np.isnan(pred_agg["f"])):
+                ind = np.where(np.isnan(pred_agg["f"]))
+                for row, col in zip(ind[0], ind[1]):
+                    replace_value = np.random.choice(pred_agg["f"][row, :])
+                    while np.isnan(replace_value):
+                        replace_value = np.random.choice(pred_agg["f"][row, :])
+                    pred_agg["f"][row, col] = replace_value
 
             # Calculate evaluation measure of simulated ensemble (mixture)
             pred_agg["scores"] = fn_scores_ens(
@@ -664,11 +674,12 @@ def fn_mc(
         with open(temp_data_out_path, "wb") as f:
             pickle.dump(pred_agg, f)
 
-        print(
-            f"{dataset.upper()}, {temp_nn.upper()}:",
-            f"Finished aggregation of {filename} -",
-            f"{(end_time - start_time)/1e+9:.2f}s",
+        log_message = (
+            f"{dataset.upper()}, {temp_nn.upper()}: "
+            f"Finished aggregation of {filename} - "
+            f"{(end_time - start_time)/1e+9:.2f}s"
         )
+        logging.info(log_message)
         # Delete and clean
         del pred_agg
 
@@ -777,7 +788,8 @@ def main():
     # Run sequential or run parallel
     run_parallel = True
 
-    print(run_grid.shape[0])
+    log_message = f"Number of iterations needed: {run_grid.shape[0]}"
+    logging.info(log_message)
     if run_parallel:
         ### Run parallel ###
         Parallel(n_jobs=5, backend="multiprocessing")(
@@ -821,14 +833,18 @@ def main():
     total_end_time = time_ns()
 
     # Print processing time
-    print(
-        "Finished processing of all threads within",
-        f"{(total_end_time - total_start_time) / 1e+9:.2f}s",
+    log_message = (
+        "Finished processing of all threads within "
+        f"{(total_end_time - total_start_time) / 1e+9:.2f}s"
     )
+    logging.info(log_message)
 
 
 if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
     os.environ["OMP_NUM_THREADS"] = "5"
+
+    ### Set log Level ###
+    logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
 
     main()
