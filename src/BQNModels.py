@@ -422,6 +422,37 @@ class BQNDropoutModel(BQNBaseModel):
         # Return model
         return model
 
+    def predict(self, X_test: NDArray) -> None:
+        # Scale data for prediction
+        self.n_test = X_test.shape[0]
+        X_pred = (X_test - self.tr_center) / self.tr_scale
+
+        ### Prediciton ###
+        # Take time
+        start_tm = time.time_ns()
+
+        # Predict 10_000 times
+        # mc_pred: NDArray[Any, Float] = np.array(
+        #     [
+        #         self.model.predict(
+        #             X_pred, batch_size=500, verbose=self.hpar["nn_verbose"]
+        #         )
+        #         for _ in range(1_000)
+        #     ]
+        # )
+        # self.f = np.mean(mc_pred, axis=0)
+
+        # Predict coefficients of Bernstein polynomials
+        self.coeff_bern = self.model.predict(
+            X_pred, verbose=self.hpar["nn_verbose"]
+        )
+
+        # Take time
+        end_tm = time.time_ns()
+
+        # Time needed
+        self.runtime_pred = end_tm - start_tm
+
 
 class BQNBayesianModel(BQNBaseModel):
     """
