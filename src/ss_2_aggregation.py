@@ -333,6 +333,8 @@ def fn_mc(
                     while np.isnan(replace_value):
                         replace_value = np.random.choice(pred_agg["f"][row, :])
                     pred_agg["f"][row, col] = replace_value
+                    log_message = f"NaN replaced in ({row}, {col})"
+                    logging.warning(log_message)
 
             # Calculate evaluation measure of simulated ensemble (mixture)
             pred_agg["scores"] = fn_scores_ens(
