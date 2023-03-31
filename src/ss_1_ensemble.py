@@ -549,9 +549,9 @@ def run_ensemble_multi_model(
                 pickle.dump([pred_nn, y_valid, y_test], f)
 
             log_message = (
-                f"{dataset.upper()}, {temp_nn.upper()}:",
-                f"Finished prediction of {filename} -",
-                f"{(end_time - start_time)/1e+9:.2f}s",
+                f"{dataset.upper()}, {temp_nn.upper()}: "
+                f"Finished prediction of {filename} - "
+                f"{(end_time - start_time)/1e+9:.2f}s"
             )
             logging.info(log_message)
 
