@@ -11,6 +11,9 @@ import pandas as pd
 import scipy.stats as ss
 import seaborn as sns
 
+### Set log Level ###
+logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
+
 
 def plot_example_aggregation():
     ### Get CONFIG information ###
@@ -728,7 +731,6 @@ def plot_pit_ens():
 
         # For-Loop over networks
         for i, temp_nn in enumerate([x.upper() for x in nn_vec]):
-
             # For-Loop over metrics
             for j, metric in enumerate(["ens", *agg_meths]):
                 df_curr = df_plot[
@@ -824,9 +826,7 @@ def plot_ensemble_members():
                     new_row["x"] = q_levels
                     if temp_nn == "drn":
                         mu, std = np.mean(
-                            pred_nn["f"][
-                                i_test,
-                            ],
+                            pred_nn["f"][i_test,],
                             axis=0,
                         )
                         quantiles = ss.norm.ppf(q=q_levels, loc=mu, scale=std)
@@ -1123,9 +1123,6 @@ agg_lty = {
 
 
 if __name__ == "__main__":
-    ### Set log Level ###
-    logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
-
     ### Call plot functions ###
     # plot_example_aggregation()
     plot_panel_model()

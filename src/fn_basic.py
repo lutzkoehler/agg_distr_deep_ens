@@ -6,6 +6,9 @@ from typing import Any
 
 import numpy as np
 
+### Set log Level ###
+logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
+
 
 def fn_upit(ranks, max_rank):
     """Function to transform ranks to uPIT-values

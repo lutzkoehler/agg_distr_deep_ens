@@ -11,7 +11,6 @@ from typing import Any, Tuple, Type
 
 import numpy as np
 import pandas as pd
-import tensorflow as tf
 from joblib import Parallel, delayed
 from nptyping import Float, NDArray
 from rpy2.robjects import default_converter, numpy2ri
@@ -23,10 +22,12 @@ import DRNModels  # noqa: F401
 from BaseModel import BaseModel
 from fn_basic import fn_upit
 
+### Set log Level ###
+logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
+
 METHOD_CLASS_CONFIG = {
     "eva": "Eva",
     "mc_dropout": "Dropout",
-    "dropconnect": "DropConnect",
     "variational_dropout": "VariationalDropout",
     "concrete_dropout": "ConcreteDropout",
     "bayesian": "Bayesian",
@@ -37,7 +38,6 @@ METHOD_CLASS_CONFIG = {
 METHOD_NUM_MODELS = {
     "single_model": [
         "mc_dropout",
-        "dropconnect",
         "variational_dropout",
         "bayesian",
         "concrete_dropout",
@@ -61,6 +61,7 @@ def run_ensemble_parallel_model(
     loss: list[Any],
     ens_method: str = "batchensemble",
     nn_deep_arch: list[Any] | None = None,
+    **kwargs,
 ) -> None:
     """Use one model to predict n_ens times in parallel
 
@@ -171,7 +172,8 @@ def run_ensemble_parallel_model(
             y_valid=y_valid,
         )
         log_message = (
-            f"{dataset.upper()}, {temp_nn.upper()}: Finished training of "
+            f"{ens_method.upper()}, {dataset.upper()}, {temp_nn.upper()}: "
+            "Finished training of "
             f"{temp_nn}_sim_{i_sim}_ens_0.pkl "
             f"- {(model.runtime_est)/1e+9:.2f}s"
         )
@@ -219,7 +221,7 @@ def run_ensemble_parallel_model(
                 pickle.dump([current_pred_nn, y_valid, y_test], f)
 
             log_message = (
-                f"{dataset.upper()}, {temp_nn.upper()}: "
+                f"{ens_method.upper()}, {dataset.upper()}, {temp_nn.upper()}: "
                 f"Finished prediction of {filename} - "
                 f"{(end_time - start_time)/1e+9:.2f}s"
             )
@@ -239,6 +241,7 @@ def run_ensemble_single_model(
     loss: list[Any],
     ens_method: str = "mc_dropout",
     nn_deep_arch: list[Any] | None = None,
+    **kwargs,
 ) -> None:
     """Use one model to predict n_ens times
 
@@ -270,11 +273,6 @@ def run_ensemble_single_model(
         "crch": importr("crch"),
         "np_cv_rules": default_converter + numpy2ri.converter,
     }
-    # Specify configs for different methods
-    if ens_method == "mc_dropout":
-        training = True
-    else:
-        training = False
 
     # Set standard architecture
     if nn_deep_arch is None:
@@ -284,6 +282,8 @@ def run_ensemble_single_model(
     nn_deep_arch_ls = np.floor(
         np.linspace(start=0, stop=n_ens, num=len(nn_deep_arch) + 1)
     )
+
+    n_mean_prediction = kwargs.get("n_mean_prediction")
 
     ### Get and split data ###
     (
@@ -315,8 +315,8 @@ def run_ensemble_single_model(
             dataset=dataset,
             ens_method=ens_method,
             rpy_elements=rpy_elements,
-            training=training,  # Makes dropout active in testing
             loss=loss,
+            n_mean_prediction=n_mean_prediction,
         )
 
         # Build model
@@ -327,7 +327,8 @@ def run_ensemble_single_model(
             y_valid=y_valid,
         )
         log_message = (
-            f"{dataset.upper()}, {temp_nn.upper()}: Finished training of "
+            f"{ens_method.upper()}, {dataset.upper()}, {temp_nn.upper()}: "
+            "Finished training of "
             f"{temp_nn}_sim_{i_sim}_ens_0.pkl "
             f"- {(model.runtime_est)/1e+9:.2f}s"
         )
@@ -345,8 +346,8 @@ def run_ensemble_single_model(
                     dataset=dataset,
                     ens_method=ens_method,
                     rpy_elements=rpy_elements,
-                    training=training,  # Makes dropout active in testing
                     loss=loss,
+                    n_mean_prediction=n_mean_prediction,
                 )
 
                 # Build model
@@ -394,7 +395,7 @@ def run_ensemble_single_model(
                 pickle.dump([pred_nn, y_valid, y_test], f)
 
             log_message = (
-                f"{dataset.upper()}, {temp_nn.upper()}: "
+                f"{ens_method.upper()}, {dataset.upper()}, {temp_nn.upper()}: "
                 f"Finished prediction of {filename} - "
                 f"{(end_time - start_time)/1e+9:.2f}s"
             )
@@ -414,6 +415,7 @@ def run_ensemble_multi_model(
     loss: list[Any],
     ens_method: str = "rand_init",
     nn_deep_arch: list[Any] | None = None,
+    **kwargs,
 ) -> None:
     """Run and train a model type n_ens times
 
@@ -522,7 +524,7 @@ def run_ensemble_multi_model(
             )
 
             log_message = (
-                f"{dataset.upper()}, {temp_nn.upper()}: "
+                f"{ens_method.upper()}, {dataset.upper()}, {temp_nn.upper()}: "
                 f"Finished training of {temp_nn}_sim_{i_sim}_ens_{i_ens}.pkl -"
                 f" {(model.runtime_est)/1e+9:.2f}s"
             )
@@ -557,7 +559,7 @@ def run_ensemble_multi_model(
                 pickle.dump([pred_nn, y_valid, y_test], f)
 
             log_message = (
-                f"{dataset.upper()}, {temp_nn.upper()}: "
+                f"{ens_method.upper()}, {dataset.upper()}, {temp_nn.upper()}: "
                 f"Finished prediction of {filename} - "
                 f"{(end_time - start_time)/1e+9:.2f}s"
             )
@@ -577,6 +579,7 @@ def run_eva_multi_model(
     loss: list[Any],
     ens_method: str = "mc_dropout",
     nn_deep_arch: list[Any] | None = None,
+    **kwargs,
 ) -> None:
     """Reproduces MC dropout results from Walz et al. (2022)
     based on Gal & Ghahramani (2015).
@@ -601,7 +604,7 @@ def run_eva_multi_model(
     ens_method : str
         Specifies the initialization method to use
     """
-    if i_sim < 17:
+    if i_sim > 5:
         return
     ### Initialization ###
     # Initialize rpy elements for all scoring functions
@@ -889,6 +892,9 @@ def main():
     # Size of network ensembles
     n_ens = CONFIG["PARAMS"]["N_ENS"]
 
+    # Number of predictions to average per sample for single models
+    n_mean_prediction = CONFIG["PARAMS"]["N_MEAN_PREDICTION"]
+
     # Loss function "norm", "0tnorm", "tnorm"
     loss = CONFIG["PARAMS"]["LOSS"]
 
@@ -965,6 +971,7 @@ def main():
                 ens_method=ens_method,
                 nn_deep_arch=nn_deep_arch,
                 loss=loss,
+                n_mean_prediction=n_mean_prediction,
             )
             for _, row in run_grid.iterrows()
         )
@@ -982,6 +989,7 @@ def main():
                 ens_method=ens_method,
                 nn_deep_arch=nn_deep_arch,
                 loss=loss,
+                n_mean_prediction=n_mean_prediction,
             )
 
 
@@ -1000,8 +1008,5 @@ if __name__ == "__main__":
     #### Limit cores to use ####
     tf.config.threading.set_intra_op_parallelism_threads(3)
     tf.config.threading.set_inter_op_parallelism_threads(3)
-
-    ### Set log Level ###
-    logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
 
     main()

@@ -7,6 +7,9 @@ import numpy as np
 
 from ss_1_ensemble import train_valid_test_split
 
+### Set log Level ###
+logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
+
 
 def main():
     """
@@ -62,7 +65,4 @@ def main():
 
 
 if __name__ == "__main__":
-    ### Set log Level ###
-    logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
-
     main()

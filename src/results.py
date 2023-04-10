@@ -6,8 +6,14 @@ import pandas as pd
 
 
 def get_panel_data(
-    data_path, dataset_ls, score_vec, nn_vec, n_ens_vec, agg_meths, ens_method
-):
+    data_path: str,
+    dataset_ls: list[str],
+    score_vec: list[str],
+    nn_vec: list[str],
+    n_ens_vec: list[int],
+    agg_meths: list[str],
+    ens_method: str,
+) -> pd.DataFrame:
     """Creates DataFrame for the list of
     [datasets, NN types, ensemble sizes, agg methods] and one ens_method.
 
@@ -139,9 +145,14 @@ def get_panel_data(
     return df_plot
 
 
-def get_best_result_table(
-    data_path, nn_vec, ens_method_ls, agg_meths, dataset_ls, n_ens_vec
-):
+def get_best_scores_table(
+    data_path: str,
+    nn_vec: list[str],
+    ens_method_ls: list[str],
+    agg_meths: list[str],
+    dataset_ls: list[str],
+    n_ens_vec: list[int],
+) -> pd.DataFrame:
     """Summarize best score for each (dataset, ens_method).
     Also contains the corresponding agg and n_ens.
 
@@ -162,7 +173,7 @@ def get_best_result_table(
 
     Returns
     -------
-    dict
+    DataFrame
         First entry contains the results for DRNs, second for BQN
     """
     score_vec = ["crps", "crpss", "me", "lgt", "cov", "a", "w"]
@@ -224,15 +235,15 @@ def get_best_result_table(
     return results
 
 
-def get_skills_table(
-    data_path,
-    dataset_ls,
-    score_vec,
-    nn_vec,
-    n_ens_vec,
-    agg_meths,
-    ens_method_ls,
-):
+def get_scores_skills_table(
+    data_path: str,
+    dataset_ls: list[str],
+    score_vec: list[str],
+    nn_vec: list[str],
+    n_ens_vec: list[int],
+    agg_meths: list[str],
+    ens_method_ls: list[str],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Creates DataFrame containing the skills for each
     ensemble size in n_ens_vec and for each (ens_method, dataset, nn, agg)
 
@@ -256,10 +267,11 @@ def get_skills_table(
 
     Returns
     -------
-    DataFrame
+    DataFrames
         Contains the skills for each ensemble size
     """
     df_skills = pd.DataFrame()
+    df_scores = pd.DataFrame()
 
     for ens_method in ens_method_ls:
         df = get_panel_data(
@@ -278,37 +290,112 @@ def get_skills_table(
                 # Filtered for dataset, NN type and ens_method
                 df_temp = df[(df["dataset"] == dataset) & (df["nn"] == nn)]
 
-                for agg in agg_meths:
+                for agg in agg_meths + ["ens"]:
                     # Get skill for agg method
                     # Filtered for dataset, NN type, ens_method and
                     # aggregation method
                     df_temp_agg = df_temp[df_temp["agg"] == agg]
-                    skills = df_temp_agg[df_temp_agg["metric"] == "crpss"][
+                    if agg != "ens":
+                        skills = df_temp_agg[df_temp_agg["metric"] == "crpss"][
+                            "score"
+                        ].tolist()
+
+                        dict_skills = {
+                            f"skill_{n_ens}": skill
+                            for (n_ens, skill) in zip(n_ens_vec, skills)
+                        }
+
+                        # Add information to row
+                        new_skill = {
+                            "ens_method": ens_method,
+                            "dataset": df_temp_agg["dataset"].iloc[0],
+                            "nn": df_temp_agg["nn"].iloc[0],
+                            "agg": df_temp_agg["agg"].iloc[0],
+                            **dict_skills,
+                            "avg_skill": np.mean(skills),
+                        }
+
+                        # Append to data frame
+                        df_skills = pd.concat(
+                            [
+                                df_skills,
+                                pd.DataFrame(new_skill, index=[0]),
+                            ],
+                            ignore_index=True,
+                        )
+
+                    scores = df_temp_agg[df_temp_agg["metric"] == "crps"][
                         "score"
                     ].tolist()
 
-                    dict_skills = {
-                        f"skill_{n_ens}": skill
-                        for (n_ens, skill) in zip(n_ens_vec, skills)
+                    dict_scores = {
+                        f"score_{n_ens}": score
+                        for (n_ens, score) in zip(n_ens_vec, scores)
                     }
 
-                    # Add information to row
-                    new_row = {
+                    new_score = {
                         "ens_method": ens_method,
                         "dataset": df_temp_agg["dataset"].iloc[0],
                         "nn": df_temp_agg["nn"].iloc[0],
                         "agg": df_temp_agg["agg"].iloc[0],
-                        **dict_skills,
-                        "avg_skill": np.mean(skills),
+                        **dict_scores,
+                        "avg_score": np.mean(scores),
                     }
 
-                    # Append to data frame
-                    df_skills = pd.concat(
+                    df_scores = pd.concat(
                         [
-                            df_skills,
-                            pd.DataFrame(new_row, index=[0]),
+                            df_scores,
+                            pd.DataFrame(new_score, index=[0]),
                         ],
                         ignore_index=True,
                     )
 
-    return df_skills
+    return df_scores, df_skills
+
+
+def get_runtimes(
+    data_path: str, dataset_ls: list[str], ens_method_ls: list[str]
+) -> pd.DataFrame:
+    """
+    Read pickled DataFrames and concatenate them into a single DataFrame.
+    Adds new columns with runtimes converted from nanoseconds to seconds.
+
+    Parameters
+    ----------
+    data_path : str
+        Path to directory containing the data.
+    dataset_ls : list[str]
+        List of strings representing names of the datasets.
+    ens_method_ls : list[str]
+        List of strings representing names of the ensemble methods.
+
+    Returns
+    -------
+    df_final : pandas DataFrame
+        A DataFrame containing columns with runtimes for training and
+        prediction, the corresponding ensemble method, and the same
+        runtimes in seconds.
+    """
+
+    df_final = pd.DataFrame()
+
+    for dataset in dataset_ls:
+        for ens_method in ens_method_ls:
+            dir_path = os.path.join(data_path, dataset, ens_method)
+            filename = f"runtime_{dataset}_{ens_method}.pkl"
+            with open(os.path.join(dir_path, filename), "rb") as f:
+                df_runtime = pickle.load(f)
+            df_runtime["ens_method"] = ens_method
+
+            df_final = pd.concat(
+                [
+                    df_final,
+                    pd.DataFrame(df_runtime),
+                ],
+                ignore_index=True,
+            )
+
+    df_final["runtime_train_s"] = df_final["runtime_train"] / 1e9
+    df_final["runtime_pred_s"] = df_final["runtime_pred"] / 1e9
+
+    return df_final

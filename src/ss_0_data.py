@@ -18,6 +18,9 @@ from rpy2.robjects.packages import importr
 
 from fn_eval import fn_scores_distr, fn_scores_ens
 
+### Set log Level ###
+logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
+
 
 def simulate_data(i_scenario: int, i_sim: int, data_out_path: str) -> None:
     """
@@ -293,9 +296,6 @@ def simulate_data(i_scenario: int, i_sim: int, data_out_path: str) -> None:
 
 
 if __name__ == "__main__":
-    ### Set log Level ###
-    logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
-
     ### Get Config ###
     with open("src/config.json", "rb") as f:
         CONFIG = json.load(f)

@@ -26,6 +26,9 @@ from tensorflow.keras.regularizers import L2  # type: ignore
 from BaseModel import BaseModel
 from fn_eval import fn_scores_distr
 
+### Set log Level ###
+logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
+
 
 class DRNBaseModel(BaseModel):
     """
@@ -312,9 +315,22 @@ class DRNBaseModel(BaseModel):
         start_tm = time.time_ns()
 
         # Predict parameters of distributional forecasts (on scaled data)
-        self.f: NDArray[Any, Float] = self.model.predict(
-            X_pred, verbose=self.hpar["nn_verbose"]
-        )
+        n_mean_prediction = self.hpar.get("n_mean_prediction")
+        if n_mean_prediction is None:
+            self.f: NDArray[Any, Float] = self.model.predict(
+                X_pred, verbose=self.hpar["nn_verbose"]
+            )
+        else:
+            # Predict n_mean_prediction times if single model
+            mc_pred: NDArray[Any, Float] = np.array(
+                [
+                    self.model.predict(
+                        X_pred, batch_size=500, verbose=self.hpar["nn_verbose"]
+                    )
+                    for _ in range(n_mean_prediction)
+                ]
+            )
+            self.f = np.mean(mc_pred, axis=0)
 
         # Take time
         end_tm = time.time_ns()
@@ -453,6 +469,7 @@ class DRNDropoutModel(DRNBaseModel):
                 "p_dropout_input": 0,
                 "upscale_units": True,
                 "n_batch": 64,
+                "n_mean_prediction": kwargs.get("n_mean_prediction"),
             }
         )
 
@@ -517,37 +534,6 @@ class DRNDropoutModel(DRNBaseModel):
         # Return model
         return model
 
-    def predict(self, X_test: NDArray) -> None:
-        # Scale data for prediction
-        self.n_test = X_test.shape[0]
-        X_pred = (X_test - self.tr_center) / self.tr_scale  # type: ignore
-
-        ### Prediciton ###
-        # Take time
-        start_tm = time.time_ns()
-
-        # Predict 10_000 times
-        mc_pred: NDArray[Any, Float] = np.array(
-            [
-                self.model.predict(
-                    X_pred, batch_size=500, verbose=self.hpar["nn_verbose"]
-                )
-                for _ in range(100)
-            ]
-        )
-        self.f = np.mean(mc_pred, axis=0)
-
-        # Predict parameters of distributional forecasts (on scaled data)
-        # self.f: NDArray[Any, Float] = self.model.predict(
-        #     X_pred, verbose=self.hpar["nn_verbose"]
-        # )
-
-        # Take time
-        end_tm = time.time_ns()
-
-        # Time needed
-        self.runtime_pred = end_tm - start_tm
-
 
 class DRNBayesianModel(DRNBaseModel):
     """
@@ -581,6 +567,7 @@ class DRNBayesianModel(DRNBaseModel):
                 "prior": "standard_normal",
                 "posterior": "mean_field",
                 "post_scale_scaling": 0.001,
+                "n_mean_prediction": kwargs.get("n_mean_prediction"),
             }
         )
 
@@ -787,7 +774,7 @@ class DRNVariationalDropoutModel(DRNBaseModel):
         )
         self.hpar.update(
             {
-                "n_epochs": 150,
+                "n_mean_prediction": kwargs.get("n_mean_prediction"),
             }
         )
 
@@ -864,6 +851,7 @@ class DRNConcreteDropoutModel(DRNBaseModel):
         self.hpar.update(
             {
                 "tau": 1.0,
+                "n_mean_prediction": kwargs.get("n_mean_prediction"),
             }
         )
 
@@ -1074,7 +1062,6 @@ class DRNBatchEnsembleModel(DRNBaseModel):
 
         # Iterate and extract each ensemble member
         for i_ens in range(self.n_ens):
-
             # Iterate over layers and extract new model's weights
             for i_layer_weights, layer_weights in enumerate(weights):
                 # Keep shared weights

@@ -7,7 +7,6 @@ import logging
 import os
 import pickle
 from functools import partial
-
 # from multiprocessing.pool import Pool
 from time import time_ns
 
@@ -22,6 +21,10 @@ from scipy.optimize import minimize
 
 from fn_basic import fn_upit
 from fn_eval import bern_quants, fn_scores_distr, fn_scores_ens
+
+### Set log Level ###
+logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
+
 
 
 ### Functions for weight estimation (and uPIT) ###
@@ -149,7 +152,12 @@ def fn_apply_bqn(i, n_ens, **kwargs):
 
 ### Parallel-Function ###
 def fn_mc(
-    temp_nn: str, dataset: str, n_ens: int, i_sim: int, **kwargs
+    temp_nn: str,
+    dataset: str,
+    ens_method: str,
+    n_ens: int,
+    i_sim: int,
+    **kwargs,
 ) -> None:
     """Function for parallel computing
 
@@ -159,6 +167,8 @@ def fn_mc(
         Network type
     dataset : str
         Name of dataset
+    ens_method : str
+        Name of ensemble method
     n_ens : integer
         Size of network ensemble
     i_sim : integer
@@ -677,7 +687,7 @@ def fn_mc(
             pickle.dump(pred_agg, f)
 
         log_message = (
-            f"{dataset.upper()}, {temp_nn.upper()}: "
+            f"{ens_method.upper()}, {dataset.upper()}, {temp_nn.upper()}: "
             f"Finished aggregation of {filename} - "
             f"{(end_time - start_time)/1e+9:.2f}s"
         )
@@ -711,6 +721,9 @@ def main():
 
     # Models considered
     dataset_ls = CONFIG["DATASET"]
+
+    # Ensemble method
+    ens_method = CONFIG["ENS_METHOD"]
 
     # Number of simulations
     n_sim = CONFIG["PARAMS"]["N_SIM"]
@@ -747,14 +760,14 @@ def main():
             CONFIG["PATHS"]["DATA_DIR"],
             CONFIG["PATHS"]["RESULTS_DIR"],
             dataset,
-            CONFIG["ENS_METHOD"],
+            ens_method,
             CONFIG["PATHS"]["ENSEMBLE_F"],
         )
         data_out_path = os.path.join(
             CONFIG["PATHS"]["DATA_DIR"],
             CONFIG["PATHS"]["RESULTS_DIR"],
             dataset,
-            CONFIG["ENS_METHOD"],
+            ens_method,
             CONFIG["PATHS"]["AGG_F"],
         )
         if dataset.startswith("scen"):
@@ -768,6 +781,7 @@ def main():
                 for i_sim in range(temp_n_sim):
                     new_row = {
                         "dataset": dataset,
+                        "ens_method": ens_method,
                         "temp_nn": temp_nn,
                         "n_ens": i_ens,
                         "i_sim": i_sim,
@@ -798,6 +812,7 @@ def main():
             delayed(fn_mc)(
                 temp_nn=row["temp_nn"],
                 dataset=row["dataset"],
+                ens_method=row["ens_method"],
                 n_ens=row["n_ens"],
                 i_sim=row["i_sim"],
                 q_levels=q_levels,
@@ -818,6 +833,7 @@ def main():
             fn_mc(
                 temp_nn=row["temp_nn"],
                 dataset=row["dataset"],
+                ens_method=row["ens_method"],
                 n_ens=row["n_ens"],
                 i_sim=row["i_sim"],
                 q_levels=q_levels,
@@ -845,8 +861,5 @@ def main():
 if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
     os.environ["OMP_NUM_THREADS"] = "5"
-
-    ### Set log Level ###
-    logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
 
     main()

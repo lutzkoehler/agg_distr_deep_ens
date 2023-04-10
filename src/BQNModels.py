@@ -22,6 +22,9 @@ from tensorflow.keras.optimizers import Adam  # type: ignore
 from BaseModel import BaseModel
 from fn_eval import bern_quants, fn_scores_ens
 
+### Set log Level ###
+logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
+
 
 class BQNBaseModel(BaseModel):
     """
@@ -224,9 +227,22 @@ class BQNBaseModel(BaseModel):
         start_tm = time.time_ns()
 
         # Predict coefficients of Bernstein polynomials
-        self.coeff_bern = self.model.predict(
-            X_pred, verbose=self.hpar["nn_verbose"]
-        )
+        n_mean_prediction = self.hpar.get("n_mean_prediction")
+        if n_mean_prediction is None:
+            self.coeff_bern = self.model.predict(
+                X_pred, verbose=self.hpar["nn_verbose"]
+            )
+        else:
+            # Predict n_mean_prediction times if single model
+            mc_pred: NDArray[Any, Float] = np.array(
+                [
+                    self.model.predict(
+                        X_pred, batch_size=500, verbose=self.hpar["nn_verbose"]
+                    )
+                    for _ in range(n_mean_prediction)
+                ]
+            )
+            self.coeff_bern = np.mean(mc_pred, axis=0)
 
         # Take time
         end_tm = time.time_ns()
@@ -365,6 +381,7 @@ class BQNDropoutModel(BQNBaseModel):
                 "p_dropout": 0.05,
                 "p_dropout_input": 0,
                 "upscale_units": True,
+                "n_mean_prediction": kwargs.get("n_mean_prediction"),
             }
         )
 
@@ -433,37 +450,6 @@ class BQNDropoutModel(BQNBaseModel):
         # Return model
         return model
 
-    def predict(self, X_test: NDArray) -> None:
-        # Scale data for prediction
-        self.n_test = X_test.shape[0]
-        X_pred = (X_test - self.tr_center) / self.tr_scale
-
-        ### Prediciton ###
-        # Take time
-        start_tm = time.time_ns()
-
-        # Predict 10_000 times
-        # mc_pred: NDArray[Any, Float] = np.array(
-        #     [
-        #         self.model.predict(
-        #             X_pred, batch_size=500, verbose=self.hpar["nn_verbose"]
-        #         )
-        #         for _ in range(1_000)
-        #     ]
-        # )
-        # self.f = np.mean(mc_pred, axis=0)
-
-        # Predict coefficients of Bernstein polynomials
-        self.coeff_bern = self.model.predict(
-            X_pred, verbose=self.hpar["nn_verbose"]
-        )
-
-        # Take time
-        end_tm = time.time_ns()
-
-        # Time needed
-        self.runtime_pred = end_tm - start_tm
-
 
 class BQNBayesianModel(BQNBaseModel):
     """
@@ -499,6 +485,7 @@ class BQNBayesianModel(BQNBaseModel):
                 "prior": "standard_normal",
                 "posterior": "mean_field",
                 "post_scale_scaling": 0.001,
+                "n_mean_prediction": kwargs.get("n_mean_prediction"),
             }
         )
 
@@ -672,6 +659,31 @@ class BQNVariationalDropoutModel(BQNBaseModel):
     Class represents the variational dropout method for BQNs.
     """
 
+    def __init__(
+        self,
+        nn_deep_arch: list[Any],
+        n_ens: int,
+        n_cores: int,
+        rpy_elements: dict[str, Any],
+        dtype: str = "float32",
+        q_levels: NDArray[Any, Float] | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            nn_deep_arch,
+            n_ens,
+            n_cores,
+            rpy_elements,
+            dtype,
+            q_levels,
+            **kwargs,
+        )
+        self.hpar.update(
+            {
+                "n_mean_prediction": kwargs.get("n_mean_prediction"),
+            }
+        )
+
     def _get_architecture(self, n_samples: int, n_features: int) -> Model:
         tf.keras.backend.set_floatx(self.dtype)
 
@@ -751,6 +763,7 @@ class BQNConcreteDropoutModel(BQNBaseModel):
         self.hpar.update(
             {
                 "tau": 1.0,
+                "n_mean_prediction": kwargs.get("n_mean_prediction"),
             }
         )
 

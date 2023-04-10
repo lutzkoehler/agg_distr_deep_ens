@@ -9,7 +9,6 @@ import ss_1_ensemble
 import ss_2_aggregation
 import ss_3_scores
 
-if __name__ == "__main__":
     #### Deactivate GPU usage ####
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
     os.environ["OMP_NUM_THREADS"] = "5"
@@ -18,9 +17,10 @@ if __name__ == "__main__":
     tf.config.threading.set_intra_op_parallelism_threads(3)
     tf.config.threading.set_inter_op_parallelism_threads(3)
 
-    ### Set log Level ###
-    logging.basicConfig(format="%(asctime)s - %(message)s", level=20)
+### Set log Level ###
+logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
 
+if __name__ == "__main__":
     #### More specifications ####
     multi_run = False
     methods = [

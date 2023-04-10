@@ -9,6 +9,9 @@ from rpy2.robjects import default_converter, numpy2ri, vectors
 from rpy2.robjects.conversion import localconverter
 from rpy2.robjects.packages import importr
 
+### Set log Level ###
+logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
+
 
 ### Coverage ###
 def fn_cover(x, alpha=None, n_ens=20):
