@@ -126,7 +126,6 @@ def main():
 
     # For-Loop over scenarios and simulations
     for dataset in dataset_ls:
-
         # Check if scenario or UCI dataset
         if dataset.startswith("scen"):
             temp_n_sim = n_sim
@@ -389,7 +388,14 @@ def main():
                                 ][temp_sr]
 
                                 if s_ref == np.Inf:
-                                    print(temp_nn)
+                                    log_message = (
+                                        f"{ens_method.upper()}, "
+                                        f"{dataset.upper()}, "
+                                        f"{temp_nn.upper()}: "
+                                        "Ensemble member with infinite "
+                                        f"score ({temp_sr})"
+                                    )
+                                    logging.warning(log_message)
                                 # Calculate skill
                                 temp_entry = (s_ref - new_row[temp_sr]) / (
                                     s_ref - s_opt

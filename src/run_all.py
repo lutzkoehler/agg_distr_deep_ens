@@ -19,11 +19,10 @@ if __name__ == "__main__":
     tf.config.threading.set_inter_op_parallelism_threads(3)
 
     ### Set log Level ###
-    logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
+    logging.basicConfig(format="%(asctime)s - %(message)s", level=20)
 
     #### More specifications ####
     multi_run = False
-
     methods = [
         "rand_init",
         "bagging",
@@ -43,7 +42,7 @@ if __name__ == "__main__":
             with open("src/config.json", "wt") as f:
                 json.dump(CONFIG, f)
 
-            logging.info(f"#### Running {ens_method} ####")
+            logging.log(msg=f"#### Running {ens_method} ####", level=25)
 
             # 1. Run ensemble prediction
             ss_1_ensemble.main()

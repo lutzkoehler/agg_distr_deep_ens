@@ -124,6 +124,8 @@ def run_ensemble_parallel_model(
             n_ens=n_ens,
             nn_deep_arch=nn_deep_arch[0],
             n_cores=num_cores,
+            dataset=dataset,
+            ens_method=ens_method,
             rpy_elements=rpy_elements,
             loss=loss,
         )
@@ -310,6 +312,8 @@ def run_ensemble_single_model(
             n_ens=n_ens,
             nn_deep_arch=nn_deep_arch[0],
             n_cores=num_cores,
+            dataset=dataset,
+            ens_method=ens_method,
             rpy_elements=rpy_elements,
             training=training,  # Makes dropout active in testing
             loss=loss,
@@ -338,6 +342,8 @@ def run_ensemble_single_model(
                     n_ens=n_ens,
                     nn_deep_arch=nn_deep_arch[idx_arch],
                     n_cores=num_cores,
+                    dataset=dataset,
+                    ens_method=ens_method,
                     rpy_elements=rpy_elements,
                     training=training,  # Makes dropout active in testing
                     loss=loss,
@@ -392,7 +398,7 @@ def run_ensemble_single_model(
                 f"Finished prediction of {filename} - "
                 f"{(end_time - start_time)/1e+9:.2f}s"
             )
-            logging.warning(log_message)
+            logging.info(log_message)
 
         del model
 
@@ -501,6 +507,8 @@ def run_ensemble_multi_model(
                 nn_deep_arch=temp_nn_deep_arch,
                 n_ens=n_ens,
                 n_cores=num_cores,
+                dataset=dataset,
+                ens_method=ens_method,
                 rpy_elements=rpy_elements,
                 loss=loss,
             )
@@ -515,8 +523,8 @@ def run_ensemble_multi_model(
 
             log_message = (
                 f"{dataset.upper()}, {temp_nn.upper()}: "
-                f"Finished training of {temp_nn}_sim_{i_sim}_ens_{i_ens}.pkl - "
-                f"{(model.runtime_est)/1e+9:.2f}s"
+                f"Finished training of {temp_nn}_sim_{i_sim}_ens_{i_ens}.pkl -"
+                f" {(model.runtime_est)/1e+9:.2f}s"
             )
             logging.info(log_message)
 
@@ -637,6 +645,8 @@ def run_eva_multi_model(
                 nn_deep_arch=[],
                 n_ens=n_ens,
                 n_cores=num_cores,
+                dataset=dataset,
+                ens_method=ens_method,
                 rpy_elements=rpy_elements,
                 p_dropout=p_dropout,
                 tau=tau,
@@ -694,6 +704,8 @@ def run_eva_multi_model(
         nn_deep_arch=[],
         n_ens=n_ens,
         n_cores=num_cores,
+        dataset=dataset,
+        ens_method=ens_method,
         rpy_elements=rpy_elements,
         p_dropout=best_p_dropout,
         tau=best_tau,

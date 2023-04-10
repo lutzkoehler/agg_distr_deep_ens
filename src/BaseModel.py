@@ -52,6 +52,8 @@ class BaseModel(ABC):
         nn_deep_arch: list[Any],
         n_ens: int,
         n_cores: int,
+        dataset: str,
+        ens_method: str,
         rpy_elements: dict[str, Any],
         dtype: str = "float32",
         **kwargs
@@ -65,6 +67,8 @@ class BaseModel(ABC):
         self.model: Model
         self.runtime_est = 0
         self.p_dropout = None
+        self.dataset = dataset
+        self.ens_method = ens_method
 
     @abstractmethod
     def _get_architecture(self, n_samples: int, n_features: int) -> Model:

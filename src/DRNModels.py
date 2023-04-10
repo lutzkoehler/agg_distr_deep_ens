@@ -8,11 +8,9 @@ import keras.backend as K
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
-from concretedropout.tensorflow import (
-    ConcreteDenseDropout,
-    get_dropout_regularizer,
-    get_weight_regularizer,
-)
+from concretedropout.tensorflow import (ConcreteDenseDropout,
+                                        get_dropout_regularizer,
+                                        get_weight_regularizer)
 from crpsmixture import crps_mixnorm_mc
 from nptyping import Float, NDArray
 from rpy2.robjects import vectors
@@ -40,12 +38,21 @@ class DRNBaseModel(BaseModel):
         nn_deep_arch: list[Any],
         n_ens: int,
         n_cores: int,
+        dataset: str,
+        ens_method: str,
         rpy_elements: dict[str, Any],
         dtype: str = "float32",
         **kwargs,
     ) -> None:
         super().__init__(
-            nn_deep_arch, n_ens, n_cores, rpy_elements, dtype, **kwargs
+            nn_deep_arch,
+            n_ens,
+            n_cores,
+            dataset,
+            ens_method,
+            rpy_elements,
+            dtype,
+            **kwargs,
         )
         self.hpar = {
             "lr_adam": 5e-4,  # -1 for Adam-default
@@ -423,12 +430,21 @@ class DRNDropoutModel(DRNBaseModel):
         nn_deep_arch: list[Any],
         n_ens: int,
         n_cores: int,
+        dataset: str,
+        ens_method: str,
         rpy_elements: dict[str, Any],
         dtype: str = "float32",
         **kwargs,
     ) -> None:
         super().__init__(
-            nn_deep_arch, n_ens, n_cores, rpy_elements, dtype, **kwargs
+            nn_deep_arch,
+            n_ens,
+            n_cores,
+            dataset,
+            ens_method,
+            rpy_elements,
+            dtype,
+            **kwargs,
         )
         self.hpar.update(
             {
@@ -511,20 +527,20 @@ class DRNDropoutModel(DRNBaseModel):
         start_tm = time.time_ns()
 
         # Predict 10_000 times
-        # mc_pred: NDArray[Any, Float] = np.array(
-        #     [
-        #         self.model.predict(
-        #             X_pred, batch_size=500, verbose=self.hpar["nn_verbose"]
-        #         )
-        #         for _ in range(1_000)
-        #     ]
-        # )
-        # self.f = np.mean(mc_pred, axis=0)
+        mc_pred: NDArray[Any, Float] = np.array(
+            [
+                self.model.predict(
+                    X_pred, batch_size=500, verbose=self.hpar["nn_verbose"]
+                )
+                for _ in range(100)
+            ]
+        )
+        self.f = np.mean(mc_pred, axis=0)
 
         # Predict parameters of distributional forecasts (on scaled data)
-        self.f: NDArray[Any, Float] = self.model.predict(
-            X_pred, verbose=self.hpar["nn_verbose"]
-        )
+        # self.f: NDArray[Any, Float] = self.model.predict(
+        #     X_pred, verbose=self.hpar["nn_verbose"]
+        # )
 
         # Take time
         end_tm = time.time_ns()
@@ -543,12 +559,21 @@ class DRNBayesianModel(DRNBaseModel):
         nn_deep_arch: list[Any],
         n_ens: int,
         n_cores: int,
+        dataset: str,
+        ens_method: str,
         rpy_elements: dict[str, Any],
         dtype: str = "float32",
         **kwargs,
     ) -> None:
         super().__init__(
-            nn_deep_arch, n_ens, n_cores, rpy_elements, dtype, **kwargs
+            nn_deep_arch,
+            n_ens,
+            n_cores,
+            dataset,
+            ens_method,
+            rpy_elements,
+            dtype,
+            **kwargs,
         )
         self.hpar.update(
             {
@@ -744,12 +769,21 @@ class DRNVariationalDropoutModel(DRNBaseModel):
         nn_deep_arch: list[Any],
         n_ens: int,
         n_cores: int,
+        dataset: str,
+        ens_method: str,
         rpy_elements: dict[str, Any],
         dtype: str = "float32",
         **kwargs,
     ) -> None:
         super().__init__(
-            nn_deep_arch, n_ens, n_cores, rpy_elements, dtype, **kwargs
+            nn_deep_arch,
+            n_ens,
+            n_cores,
+            dataset,
+            ens_method,
+            rpy_elements,
+            dtype,
+            **kwargs,
         )
         self.hpar.update(
             {
@@ -811,12 +845,21 @@ class DRNConcreteDropoutModel(DRNBaseModel):
         nn_deep_arch: list[Any],
         n_ens: int,
         n_cores: int,
+        dataset: str,
+        ens_method: str,
         rpy_elements: dict[str, Any],
         dtype: str = "float32",
         **kwargs,
     ) -> None:
         super().__init__(
-            nn_deep_arch, n_ens, n_cores, rpy_elements, dtype, **kwargs
+            nn_deep_arch,
+            n_ens,
+            n_cores,
+            dataset,
+            ens_method,
+            rpy_elements,
+            dtype,
+            **kwargs,
         )
         self.hpar.update(
             {
@@ -889,6 +932,10 @@ class DRNConcreteDropoutModel(DRNBaseModel):
                 self.p_dropout.append(
                     tf.nn.sigmoid(layer.trainable_variables[0]).numpy()[0]
                 )
+        with open(
+            f"concrete_dropout_rates_{self.dataset}_{self.ens_method}.txt", "a"
+        ) as myfile:
+            myfile.write("DRN - Dropout_Rates: " + repr(self.p_dropout))
         log_message = f"Learned Dropout rates: {self.p_dropout}"
         logging.info(log_message)
 
@@ -903,12 +950,21 @@ class DRNBatchEnsembleModel(DRNBaseModel):
         nn_deep_arch: list[Any],
         n_ens: int,
         n_cores: int,
+        dataset: str,
+        ens_method: str,
         rpy_elements: dict[str, Any],
         dtype: str = "float32",
         **kwargs,
     ) -> None:
         super().__init__(
-            nn_deep_arch, n_ens, n_cores, rpy_elements, dtype, **kwargs
+            nn_deep_arch,
+            n_ens,
+            n_cores,
+            dataset,
+            ens_method,
+            rpy_elements,
+            dtype,
+            **kwargs,
         )
         self.hpar.update(
             {
@@ -1118,12 +1174,21 @@ class DRNEvaModel(DRNBaseModel):
         nn_deep_arch: list[Any],
         n_ens: int,
         n_cores: int,
+        dataset: str,
+        ens_method: str,
         rpy_elements: dict[str, Any],
         dtype: str = "float32",
         **kwargs,
     ) -> None:
         super().__init__(
-            nn_deep_arch, n_ens, n_cores, rpy_elements, dtype, **kwargs
+            nn_deep_arch,
+            n_ens,
+            n_cores,
+            dataset,
+            ens_method,
+            rpy_elements,
+            dtype,
+            **kwargs,
         )
         self.hpar.update(
             {

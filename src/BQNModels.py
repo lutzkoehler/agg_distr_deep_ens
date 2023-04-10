@@ -9,11 +9,9 @@ import numpy as np
 import scipy.stats as ss
 import tensorflow as tf
 import tensorflow_probability as tfp
-from concretedropout.tensorflow import (
-    ConcreteDenseDropout,
-    get_dropout_regularizer,
-    get_weight_regularizer,
-)
+from concretedropout.tensorflow import (ConcreteDenseDropout,
+                                        get_dropout_regularizer,
+                                        get_weight_regularizer)
 from nptyping import Float, NDArray
 from tensorflow.keras import Model, Sequential  # type: ignore
 from tensorflow.keras.callbacks import EarlyStopping  # type: ignore
@@ -36,13 +34,22 @@ class BQNBaseModel(BaseModel):
         nn_deep_arch: list[Any],
         n_ens: int,
         n_cores: int,
+        dataset: str,
+        ens_method: str,
         rpy_elements: dict[str, Any],
         dtype: str = "float32",
         q_levels: NDArray[Any, Float] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(
-            nn_deep_arch, n_ens, n_cores, rpy_elements, dtype, **kwargs
+            nn_deep_arch,
+            n_ens,
+            n_cores,
+            dataset,
+            ens_method,
+            rpy_elements,
+            dtype,
+            **kwargs,
         )
         # If not given use equidistant quantiles (multiple of ensemble
         # coverage, incl. median)
@@ -334,6 +341,8 @@ class BQNDropoutModel(BQNBaseModel):
         nn_deep_arch: list[Any],
         n_ens: int,
         n_cores: int,
+        dataset: str,
+        ens_method: str,
         rpy_elements: dict[str, Any],
         dtype: str = "float32",
         q_levels: NDArray[Any, Float] | None = None,
@@ -343,6 +352,8 @@ class BQNDropoutModel(BQNBaseModel):
             nn_deep_arch,
             n_ens,
             n_cores,
+            dataset,
+            ens_method,
             rpy_elements,
             dtype,
             q_levels,
@@ -464,6 +475,8 @@ class BQNBayesianModel(BQNBaseModel):
         nn_deep_arch: list[Any],
         n_ens: int,
         n_cores: int,
+        dataset: str,
+        ens_method: str,
         rpy_elements: dict[str, Any],
         dtype: str = "float32",
         q_levels: NDArray[Any, Float] | None = None,
@@ -473,6 +486,8 @@ class BQNBayesianModel(BQNBaseModel):
             nn_deep_arch,
             n_ens,
             n_cores,
+            dataset,
+            ens_method,
             rpy_elements,
             dtype,
             q_levels,
@@ -715,6 +730,8 @@ class BQNConcreteDropoutModel(BQNBaseModel):
         nn_deep_arch: list[Any],
         n_ens: int,
         n_cores: int,
+        dataset: str,
+        ens_method: str,
         rpy_elements: dict[str, Any],
         dtype: str = "float32",
         q_levels: NDArray[Any, Float] | None = None,
@@ -724,6 +741,8 @@ class BQNConcreteDropoutModel(BQNBaseModel):
             nn_deep_arch,
             n_ens,
             n_cores,
+            dataset,
+            ens_method,
             rpy_elements,
             dtype,
             q_levels,
@@ -804,6 +823,10 @@ class BQNConcreteDropoutModel(BQNBaseModel):
                 self.p_dropout.append(
                     tf.nn.sigmoid(layer.trainable_variables[0]).numpy()[0]
                 )
+        with open(
+            f"concrete_dropout_rates_{self.dataset}_{self.ens_method}.txt", "a"
+        ) as myfile:
+            myfile.write("BQN - Dropout_Rates: " + repr(self.p_dropout))
         log_message = f"Learned Dropout rates: {self.p_dropout}"
         logging.info(log_message)
 
@@ -818,6 +841,8 @@ class BQNBatchEnsembleModel(BQNBaseModel):
         nn_deep_arch: list[Any],
         n_ens: int,
         n_cores: int,
+        dataset: str,
+        ens_method: str,
         rpy_elements: dict[str, Any],
         dtype: str = "float32",
         q_levels: NDArray[Any, Float] | None = None,
@@ -827,6 +852,8 @@ class BQNBatchEnsembleModel(BQNBaseModel):
             nn_deep_arch,
             n_ens,
             n_cores,
+            dataset,
+            ens_method,
             rpy_elements,
             dtype,
             q_levels,
@@ -936,7 +963,6 @@ class BQNBatchEnsembleModel(BQNBaseModel):
 
         # Iterate and extract each ensemble member
         for i_ens in range(self.n_ens):
-
             # Iterate over layers and extract new model's weights
             for i_layer_weights, layer_weights in enumerate(weights):
                 # Keep shared weights
