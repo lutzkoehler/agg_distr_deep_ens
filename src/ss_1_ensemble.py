@@ -11,6 +11,7 @@ from typing import Any, Tuple, Type
 
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 from joblib import Parallel, delayed
 from nptyping import Float, NDArray
 from rpy2.robjects import default_converter, numpy2ri

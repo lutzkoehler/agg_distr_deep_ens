@@ -8,9 +8,11 @@ import keras.backend as K
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
-from concretedropout.tensorflow import (ConcreteDenseDropout,
-                                        get_dropout_regularizer,
-                                        get_weight_regularizer)
+from concretedropout.tensorflow import (
+    ConcreteDenseDropout,
+    get_dropout_regularizer,
+    get_weight_regularizer,
+)
 from crpsmixture import crps_mixnorm_mc
 from nptyping import Float, NDArray
 from rpy2.robjects import vectors
@@ -923,7 +925,9 @@ class DRNConcreteDropoutModel(DRNBaseModel):
         with open(
             f"concrete_dropout_rates_{self.dataset}_{self.ens_method}.txt", "a"
         ) as myfile:
-            myfile.write("DRN - Dropout_Rates: " + repr(self.p_dropout))
+            myfile.write(
+                "DRN - Dropout_Rates: " + repr(self.p_dropout) + " \n"
+            )
         log_message = f"Learned Dropout rates: {self.p_dropout}"
         logging.info(log_message)
 

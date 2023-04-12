@@ -9,9 +9,11 @@ import numpy as np
 import scipy.stats as ss
 import tensorflow as tf
 import tensorflow_probability as tfp
-from concretedropout.tensorflow import (ConcreteDenseDropout,
-                                        get_dropout_regularizer,
-                                        get_weight_regularizer)
+from concretedropout.tensorflow import (
+    ConcreteDenseDropout,
+    get_dropout_regularizer,
+    get_weight_regularizer,
+)
 from nptyping import Float, NDArray
 from tensorflow.keras import Model, Sequential  # type: ignore
 from tensorflow.keras.callbacks import EarlyStopping  # type: ignore
@@ -664,6 +666,8 @@ class BQNVariationalDropoutModel(BQNBaseModel):
         nn_deep_arch: list[Any],
         n_ens: int,
         n_cores: int,
+        dataset: str,
+        ens_method: str,
         rpy_elements: dict[str, Any],
         dtype: str = "float32",
         q_levels: NDArray[Any, Float] | None = None,
@@ -673,6 +677,8 @@ class BQNVariationalDropoutModel(BQNBaseModel):
             nn_deep_arch,
             n_ens,
             n_cores,
+            dataset,
+            ens_method,
             rpy_elements,
             dtype,
             q_levels,
@@ -839,7 +845,9 @@ class BQNConcreteDropoutModel(BQNBaseModel):
         with open(
             f"concrete_dropout_rates_{self.dataset}_{self.ens_method}.txt", "a"
         ) as myfile:
-            myfile.write("BQN - Dropout_Rates: " + repr(self.p_dropout))
+            myfile.write(
+                "BQN - Dropout_Rates: " + repr(self.p_dropout) + " \n"
+            )
         log_message = f"Learned Dropout rates: {self.p_dropout}"
         logging.info(log_message)
 

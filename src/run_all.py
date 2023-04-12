@@ -9,6 +9,10 @@ import ss_1_ensemble
 import ss_2_aggregation
 import ss_3_scores
 
+### Set log Level ###
+logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
+
+if __name__ == "__main__":
     #### Deactivate GPU usage ####
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
     os.environ["OMP_NUM_THREADS"] = "5"
@@ -17,12 +21,8 @@ import ss_3_scores
     tf.config.threading.set_intra_op_parallelism_threads(3)
     tf.config.threading.set_inter_op_parallelism_threads(3)
 
-### Set log Level ###
-logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
-
-if __name__ == "__main__":
     #### More specifications ####
-    multi_run = False
+    multi_run = True
     methods = [
         "rand_init",
         "bagging",
@@ -57,7 +57,7 @@ if __name__ == "__main__":
             figures.plot_panel_model()
             figures.plot_panel_boxplot()
             figures.plot_pit_ens()
-            figures.plot_ensemble_members()
+            # figures.plot_ensemble_members()
     # Run a single ensemble method
     else:
         # 1. Run ensemble prediction
@@ -73,4 +73,4 @@ if __name__ == "__main__":
         figures.plot_panel_model()
         figures.plot_panel_boxplot()
         figures.plot_pit_ens()
-        figures.plot_ensemble_members()
+        # figures.plot_ensemble_members()

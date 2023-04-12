@@ -7,7 +7,6 @@ import logging
 import os
 import pickle
 from functools import partial
-# from multiprocessing.pool import Pool
 from time import time_ns
 
 import numpy as np
@@ -24,7 +23,6 @@ from fn_eval import bern_quants, fn_scores_distr, fn_scores_ens
 
 ### Set log Level ###
 logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
-
 
 
 ### Functions for weight estimation (and uPIT) ###
@@ -859,6 +857,7 @@ def main():
 
 
 if __name__ == "__main__":
+    ### Deactivate GPU usage ###
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
     os.environ["OMP_NUM_THREADS"] = "5"
 
