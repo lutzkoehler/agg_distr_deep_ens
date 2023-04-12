@@ -960,7 +960,7 @@ def main():
 
     if run_parallel:
         ### Run parallel ###
-        Parallel(n_jobs=4, backend="multiprocessing")(
+        Parallel(n_jobs=2, backend="multiprocessing")(
             delayed(run_ensemble)(
                 dataset=row["dataset"],
                 i_sim=row["i_sim"],
@@ -1002,4 +1002,12 @@ def check_directories(run_grid) -> None:
 
 
 if __name__ == "__main__":
+    #### Deactivate GPU usage ####
+    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+    os.environ["OMP_NUM_THREADS"] = "5"
+
+    #### Limit cores to use ####
+    tf.config.threading.set_intra_op_parallelism_threads(3)
+    tf.config.threading.set_inter_op_parallelism_threads(3)
+
     main()

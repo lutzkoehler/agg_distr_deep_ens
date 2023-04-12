@@ -806,7 +806,7 @@ def main():
     logging.info(log_message)
     if run_parallel:
         ### Run parallel ###
-        Parallel(n_jobs=8, backend="multiprocessing")(
+        Parallel(n_jobs=15, backend="multiprocessing")(
             delayed(fn_mc)(
                 temp_nn=row["temp_nn"],
                 dataset=row["dataset"],
@@ -857,4 +857,8 @@ def main():
 
 
 if __name__ == "__main__":
+    ### Deactivate GPU usage ###
+    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+    os.environ["OMP_NUM_THREADS"] = "5"
+
     main()

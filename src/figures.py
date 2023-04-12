@@ -449,7 +449,6 @@ def plot_panel_model():
         fig.savefig(filename)
         log_message = f"Panel saved to {filename}"
         logging.info(log_message)
-        plt.close(fig)
 
 
 def plot_panel_boxplot():
@@ -570,7 +569,6 @@ def plot_panel_boxplot():
         fig.savefig(filename)
         log_message = f"CRPSS boxplots saved to {filename}"
         logging.info(log_message)
-        plt.close(fig)
 
 
 def plot_pit_ens():
@@ -756,7 +754,6 @@ def plot_pit_ens():
         fig.savefig(filename)
         log_message = f"PIT saved to {filename}"
         logging.info(log_message)
-        plt.close(fig)
 
 
 def plot_ensemble_members():
@@ -987,7 +984,6 @@ def plot_ensemble_members():
         fig.savefig(filename)
         log_message = f"Ensemble members saved to {filename}"
         logging.info(log_message)
-        plt.close(fig)
 
 
 def _get_config_info():
