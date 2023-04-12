@@ -244,8 +244,8 @@ def get_scores_skills_table(
     agg_meths: list[str],
     ens_method_ls: list[str],
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Creates DataFrame containing the skills for each
-    ensemble size in n_ens_vec and for each (ens_method, dataset, nn, agg)
+    """Creates one scores and one skills DataFrame with all scores / skill for
+    each ensemble size in n_ens_vec and for each (ens_method, dataset, nn, agg)
 
     Parameters
     ----------
