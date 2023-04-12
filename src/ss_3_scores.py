@@ -17,10 +17,6 @@ logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
 
 
 def main():
-    #### Deactivate GPU usage ####
-    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-    os.environ["OMP_NUM_THREADS"] = "5"
-
     ### Get Config ###
     with open("src/config.json", "rb") as f:
         CONFIG = json.load(f)
