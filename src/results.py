@@ -399,3 +399,64 @@ def get_runtimes(
     df_final["runtime_pred_s"] = df_final["runtime_pred"] / 1e9
 
     return df_final
+
+
+def get_pi_coverage_table(
+    data_path: str,
+    dataset_ls: list[str],
+    score_vec: list[str],
+    nn_vec: list[str],
+    n_ens_vec: list[int],
+    agg_meths: list[str],
+    ens_method_ls: list[str],
+) -> pd.DataFrame:
+    """Returns a DataFrame containing the PI length and coverage scores.
+
+    Parameters
+    ----------
+    data_path : string
+        Path to eval_{dataset}_{ens_method}.pkl files
+    dataset_ls : list[string]
+        List containing the names of datasets to summarize
+    score_vec : list[string]
+        List containing the names of scores to summarize
+        (e.g. crps, a, w, etc.)
+    nn_vec : list[string]
+        List containing the NN types to consider ("drn", "bqn")
+    n_ens_vec : list[int]
+        List containing ensemble sizes to consider
+    agg_meths : list[string]
+        List containing the aggregation methods to consider (e.g. "lp", "vi")
+    ens_method_ls : list[string]
+        List containing the names of ensembles to consider (e.g. "rand_init)
+
+    Returns
+    -------
+    DataFrames
+        Contains the skills for each ensemble size
+    """
+    df_results = pd.DataFrame()
+
+    for ens_method in ens_method_ls:
+        df = get_panel_data(
+            data_path,
+            dataset_ls,
+            score_vec,
+            nn_vec,
+            n_ens_vec,
+            agg_meths,
+            ens_method,
+        )
+
+        filtered = df[df["metric"].isin(["lgt", "cov"])]
+        filtered["ens_method"] = ens_method
+
+        df_results = pd.concat(
+            [
+                df_results,
+                filtered,
+            ],
+            ignore_index=True,
+        )
+
+    return df_results
