@@ -1,6 +1,12 @@
 {
     "DATASET": [
-        "naval"
+        "energy",
+        "kin8nm",
+        "naval",
+        "power",
+        "protein",
+        "wine",
+        "yacht"
     ],
     "_available_DATASET": [
         "scen_1",
@@ -17,8 +23,7 @@
         "power",
         "protein",
         "wine",
-        "yacht",
-        "year"
+        "yacht"
     ],
     "ENS_METHOD": "batchensemble",
     "_available_ENS_METHOD": [
@@ -91,9 +96,9 @@
     },
     "PARAMS": {
         "LOSS": [
-            "tnorm",
-            0.95,
-            1
+            "norm",
+            0,
+            10
         ],
         "_available_LOSS": [
             [
@@ -140,5 +145,5 @@
         "N_ENS": 20,
         "N_MEAN_PREDICTION": 100
     },
-    "NUM_CORES": 5
+    "NUM_CORES": 6
 }
