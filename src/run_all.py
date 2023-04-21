@@ -34,10 +34,10 @@ if __name__ == "__main__":
             logging.log(msg=f"#### Running {ens_method} ####", level=25)
 
             # 1. Run ensemble prediction
-            # ss_1_ensemble.main()
+            ss_1_ensemble.main()
 
             # 2. Run aggregation
-            # ss_2_aggregation.main()
+            ss_2_aggregation.main()
 
             # 3. Score results
             ss_3_scores.main()
