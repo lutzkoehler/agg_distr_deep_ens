@@ -1,5 +1,9 @@
 {
     "DATASET": [
+        "scen_1",
+        "scen_4",
+        "boston",
+        "concrete",
         "energy",
         "kin8nm",
         "naval",
@@ -25,7 +29,7 @@
         "wine",
         "yacht"
     ],
-    "ENS_METHOD": "batchensemble",
+    "ENS_METHOD": "rand_init",
     "_available_ENS_METHOD": [
         "rand_init",
         "bagging",
@@ -98,7 +102,7 @@
         "LOSS": [
             "norm",
             0,
-            10
+            0
         ],
         "_available_LOSS": [
             [
@@ -145,5 +149,5 @@
         "N_ENS": 20,
         "N_MEAN_PREDICTION": 100
     },
-    "NUM_CORES": 6
+    "NUM_CORES": 4
 }
