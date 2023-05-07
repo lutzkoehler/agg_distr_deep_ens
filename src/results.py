@@ -152,7 +152,7 @@ def get_best_scores_table(
     agg_meths: list[str],
     dataset_ls: list[str],
     n_ens_vec: list[int],
-) -> pd.DataFrame:
+) -> dict:
     """Summarize best score for each (dataset, ens_method).
     Also contains the corresponding agg and n_ens.
 
@@ -353,6 +353,115 @@ def get_scores_skills_table(
     return df_scores, df_skills
 
 
+def get_final_scores_skills_table(
+    paths: dict,
+    drn_choice: dict,
+    bqn_choice: dict | None,
+    dataset_ls: list[str],
+    ens_method_ls: list[str],
+):
+    score_vec = ["crps", "crpss", "me", "lgt", "cov", "a", "w"]
+    distr_ls = ["drn", "bqn"]
+    n_ens_vec = np.arange(start=2, stop=20 + 2, step=2)
+    agg_meths = ["lp", "vi", "vi-a", "vi-w", "vi-aw"]
+
+    # Get all skills table
+    dataset_ls_norm = dataset_ls.copy()
+    dataset_ls_norm.extend(["scen_1", "scen_4"])
+    df_scores_norm, df_skills_norm = get_scores_skills_table(
+        paths["norm"],
+        dataset_ls_norm,
+        score_vec,
+        distr_ls,
+        n_ens_vec,  # type: ignore
+        agg_meths,
+        ens_method_ls,
+    )
+
+    dataset_ls_tnorm = [
+        "naval",
+        "wine",
+    ]
+    df_scores_tnorm, df_skills_tnorm = get_scores_skills_table(
+        paths["tnorm"],
+        dataset_ls_tnorm,
+        score_vec,
+        distr_ls,
+        n_ens_vec,  # type: ignore
+        agg_meths,
+        ens_method_ls,
+    )
+
+    df_scores_0tnorm, df_skills_0tnorm = get_scores_skills_table(
+        paths["0tnorm"],
+        dataset_ls,
+        score_vec,
+        distr_ls,
+        n_ens_vec,  # type: ignore
+        agg_meths,
+        ens_method_ls,
+    )
+
+    df_scores_norm["distr"] = "norm"
+    df_skills_norm["distr"] = "norm"
+    df_scores_tnorm["distr"] = "tnorm"
+    df_skills_tnorm["distr"] = "tnorm"
+    df_scores_0tnorm["distr"] = "0tnorm"
+    df_skills_0tnorm["distr"] = "0tnorm"
+
+    df_scores = pd.concat(
+        [df_scores_norm, df_scores_tnorm, df_scores_0tnorm], ignore_index=True
+    )
+    df_skills = pd.concat(
+        [df_skills_norm, df_skills_tnorm, df_skills_0tnorm], ignore_index=True
+    )
+
+    if bqn_choice is None:
+        bqn_choice = drn_choice
+
+    drn_choice_tup = [
+        ("drn", list(drn_choice.keys())[i], list(drn_choice.values())[i])
+        for i in range(len(drn_choice))
+    ]
+    bqn_choice_tup = [
+        ("bqn", list(bqn_choice.keys())[i], list(bqn_choice.values())[i])
+        for i in range(len(bqn_choice))
+    ]
+
+    df_scores_filtered = pd.concat(
+        [
+            df_scores[
+                df_scores[["nn", "dataset", "distr"]]
+                .apply(tuple, axis=1)
+                .isin(drn_choice_tup)
+            ],
+            df_scores[
+                df_scores[["nn", "dataset", "distr"]]
+                .apply(tuple, axis=1)
+                .isin(bqn_choice_tup)
+            ],
+        ],
+        ignore_index=True,
+    )
+    df_skills_filtered = pd.concat(
+        [
+            df_skills[
+                df_skills[["nn", "dataset", "distr"]]
+                .apply(tuple, axis=1)
+                .isin(drn_choice_tup)
+            ],
+            df_skills[
+                df_skills[["nn", "dataset", "distr"]]
+                .apply(tuple, axis=1)
+                .isin(bqn_choice_tup)
+            ],
+        ],
+        ignore_index=True,
+    )
+
+    return df_scores_filtered, df_skills_filtered
+
+
 def get_runtimes(
     data_path: str, dataset_ls: list[str], ens_method_ls: list[str]
 ) -> pd.DataFrame:
@@ -402,7 +511,9 @@ def get_runtimes(
 
 
 def get_pi_coverage_table(
-    data_path: str,
+    paths: dict,
+    drn_choice: dict,
+    bqn_choice: dict,
     dataset_ls: list[str],
     score_vec: list[str],
     nn_vec: list[str],
@@ -438,25 +549,176 @@ def get_pi_coverage_table(
     df_results = pd.DataFrame()
 
     for ens_method in ens_method_ls:
-        df = get_panel_data(
-            data_path,
-            dataset_ls,
-            score_vec,
-            nn_vec,
-            n_ens_vec,
-            agg_meths,
-            ens_method,
-        )
+        for dataset in dataset_ls:
+            data_path = paths.get(drn_choice.get(dataset))
+            df = get_panel_data(
+                data_path,  # type: ignore
+                [dataset],
+                score_vec,
+                nn_vec,
+                n_ens_vec,
+                agg_meths,
+                ens_method,
+            )
 
-        filtered = df[df["metric"].isin(["lgt", "cov"])]
-        filtered["ens_method"] = ens_method
+            filtered = df[df["metric"].isin(["lgt", "cov"])]
+            filtered["ens_method"] = ens_method
+            filtered["distr"] = drn_choice.get(dataset)
 
-        df_results = pd.concat(
-            [
-                df_results,
-                filtered,
-            ],
-            ignore_index=True,
-        )
+            df_results = pd.concat(
+                [
+                    df_results,
+                    filtered,
+                ],
+                ignore_index=True,
+            )
 
     return df_results
+
+
+def get_pit(
+    paths: dict,
+    drn_choice: dict,
+    data_ens_path: str,
+    data_agg_path: str,
+    ens_method_ls: list[str],
+    dataset_ls: list[str],
+    nn_vec: list[str],
+    agg_meths: list[str],
+):
+    ### Simulation: PIT histograms ###
+    # Network ensemble size
+    n_ens = 2
+
+    # Number of bins in histogram
+    n_bins = 21
+
+    df_plot = pd.DataFrame()
+
+    # For-Loop over ens_methods
+    for ens_method in ens_method_ls:
+        # For-Loop over scenarios
+        for dataset in dataset_ls:
+            if dataset in ["protein", "year"]:
+                temp_n_sim = 5
+            else:
+                temp_n_sim = 20
+            ### Simulation: Load data ###
+            data_path: str = paths.get(drn_choice.get(dataset))  # type: ignore
+            filename = f"eval_{dataset}_{ens_method}.pkl"
+            with open(os.path.join(data_path, filename), "rb") as f:
+                df_scores = pickle.load(f)
+            ### Initialization ###
+            # Only scenario
+            df_sc = df_scores[df_scores["model"] == dataset]
+
+            if ens_method == "batchensemble":
+                sample_sizes = {
+                    "scen_1": (1000, 10_000),
+                    "scen_4": (1000, 10_000),
+                    "boston": (91, 51),
+                    "concrete": (186, 103),
+                    "energy": (139, 77),
+                    "kin8nm": (1475, 819),
+                    "naval": (2140, 1193),
+                    "power": (1723, 957),
+                    "protein": (8232, 4573),
+                    "wine": (288, 160),
+                    "yacht": (55, 31),
+                }
+                n_valid, n_test = sample_sizes.get(dataset)  # type: ignore
+            else:
+                n_valid = df_sc[df_sc["type"] != "ref"]["n_valid"].iloc[0]
+                n_test = df_sc[df_sc["type"] != "ref"]["n_test"].iloc[0]
+
+            # Index vector for validation and testing
+            i_valid = list(range(n_valid))
+            i_test = [max(i_valid) + el for el in list(range(n_test))]
+
+            ### Get PIT values ###
+            # List for PIT values
+            pit_ls = {}
+
+            # For-Loop over network variants
+            for temp_nn in nn_vec:
+                ### PIT values of ensemble member ###
+                # Vector for PIT values
+                temp_pit = []
+
+                # For-Loop over ensemble member and simulation
+                for i_rep in range(n_ens):
+                    for i_sim in range(temp_n_sim):
+                        # Load ensemble member
+                        filename = f"{temp_nn}_sim_{i_sim}_ens_{i_rep}.pkl"  # noqa: E501
+                        temp_data_ens_path = data_ens_path.replace(
+                            "dataset", dataset
+                        )
+                        temp_data_ens_path_final = temp_data_ens_path.replace(
+                            "ens_method", ens_method
+                        )
+                        with open(
+                            os.path.join(temp_data_ens_path_final, filename),
+                            "rb",
+                        ) as f:
+                            [pred_nn, _, _] = pickle.load(f)
+
+                        # Read out
+                        temp_pit.append(pred_nn["scores"]["pit"][i_test])
+
+                # Save PIT
+                pit_ls[f"{temp_nn}_ens"] = temp_pit
+
+                ### Aggregation methods ###
+                # For-Loop over aggregation methods
+                for temp_agg in agg_meths:
+                    # Vector for PIT values
+                    temp_pit = []
+
+                    # For-Loop over simulations
+                    for i_sim in range(temp_n_sim):
+                        # Load aggregated forecasts
+                        filename = f"{temp_nn}_sim_{i_sim}_{temp_agg}_ens_{n_ens}.pkl"  # noqa: E501
+                        temp_data_agg_path = data_agg_path.replace(
+                            "dataset", dataset
+                        )
+                        temp_data_agg_path_final = temp_data_agg_path.replace(
+                            "ens_method", ens_method
+                        )
+                        with open(
+                            os.path.join(temp_data_agg_path_final, filename),
+                            "rb",
+                        ) as f:
+                            pred_agg = pickle.load(f)
+
+                        # Read out PIT-values
+                        temp_pit.append(pred_agg["scores"]["pit"])
+
+                    # Save PIT
+                    pit_ls[f"{temp_nn}_{temp_agg}"] = temp_pit
+
+            ### Calculate histograms ###
+            # For-Loop over network variants and aggregation methods
+            for temp_nn in nn_vec:
+                for temp_agg in ["ens", *agg_meths]:
+                    # Calculate histogram and read out values (see pit function)  # noqa: E501
+                    temp_hist, temp_bin_edges = np.histogram(
+                        pit_ls[f"{temp_nn}_{temp_agg}"],
+                        bins=n_bins,
+                        density=True,
+                    )
+
+                    new_row = {
+                        "dataset": dataset,
+                        "ens_method": ens_method,
+                        "nn": temp_nn,
+                        "agg": temp_agg,
+                        "breaks": [temp_bin_edges],
+                        "pit": [temp_hist],
+                    }
+
+                    df_plot = pd.concat(
+                        [df_plot, pd.DataFrame(new_row, index=[0])],
+                        ignore_index=True,
+                    )
+
+    return df_plot
