@@ -10,5 +10,10 @@ data/results/*/*/agg
 data/results/*/*/model
 
 plots/*
+!plots/results
+!plots/final_results_tnormal
+!plots/final_results_0tnormal
+!plots/final_results_normal
+
 notebooks
 /*.pkl
