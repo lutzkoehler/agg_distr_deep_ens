@@ -43,8 +43,6 @@ Based on the results of the experiments, seven recommendations are derived. Over
 | ---- | ----------- |
 | `*.ipynb` | Notebooks to evaluate the results and generate plots for the thesis. |
 
-Note that the functions `fn_nn_cs` and `fn_nn_cs` mainly differ in the forecast distributions applied in the simulation and case study. The functions of the case study are tailored to the wind gust data, thus we recommend using the file of the simulation study to investigate the network variants, unless one is interested in a strictly positive predictive distribution or the station embedding applied in the case study.
-
 ## Data
 
 ### Simulation study
@@ -54,6 +52,10 @@ The simulated data, the deep ensembles and the aggregated forecasts result in fi
 ### UCI datasets
 
 The data files result from the Gal & Ghahramani (2015) https://github.com/yaringal/DropoutUncertaintyExps and can be processed using the functions in `process_uci_datasets.py`.
+
+## Results
+
+Results of the final experiments and the thesis can be found under `data/results/final_results_*`. Corresponding plots are available under `plots/final_results_*`.
 
 ## How To
 
@@ -97,7 +99,3 @@ Deep ensembles are generated in `ss_1_ensemble.py`. On the top of the file, sing
 ### Aggregating deep ensembles
 
 Deep ensemble forecasts are aggregated in `ss_2_aggregation.py`. Parallelization and the corresponding cores can be set at the end of the file.
-
-
-
-
