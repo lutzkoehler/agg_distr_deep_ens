@@ -3,7 +3,7 @@
 This repository provides Python-code accompanying the Thesis
 
 > Köhler, L. (2023). 
-> Ensembling Strategies for Neural Network-based Distributional Regression
+> Ensembling Strategies for Neural Network-based Distributional Regression.
 > Chair of Statistical Methods and Econometrics (Prof. Dr. Melanie Schienle, ECON, KIT).
 > Supervision: Sebastian Lerch, Benedikt Schulz.
 
