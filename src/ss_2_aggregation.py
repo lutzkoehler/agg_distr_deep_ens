@@ -12,6 +12,7 @@ from time import time_ns
 import numpy as np
 import pandas as pd
 import scipy.stats as ss
+import tensorflow as tf
 from joblib import Parallel, delayed
 from rpy2.robjects import default_converter, numpy2ri, vectors
 from rpy2.robjects.conversion import localconverter
@@ -23,6 +24,13 @@ from fn_eval import bern_quants, fn_scores_distr, fn_scores_ens
 
 ### Set log Level ###
 logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
+
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+os.environ["OMP_NUM_THREADS"] = "5"
+
+tf.config.threading.set_intra_op_parallelism_threads(3)
+tf.config.threading.set_inter_op_parallelism_threads(3)
 
 
 ### Functions for weight estimation (and uPIT) ###
@@ -730,7 +738,21 @@ def main():
     n_ens = CONFIG["PARAMS"]["N_ENS"]
 
     # Loss function "norm", "0tnorm", "tnorm"
-    loss = CONFIG["PARAMS"]["LOSS"]
+    # loss = CONFIG["PARAMS"]["LOSS"]
+    # Overwrite loss depending on dataset
+    loss_dict = {
+        "scen_1": ["norm", 0, 0],
+        "scen_4": ["norm", 0, 0],
+        "boston": ["0tnorm", 0, 0],
+        "concrete": ["0tnorm", 0, 0],
+        "energy": ["0tnorm", 0, 0],
+        "kin8nm": ["0tnorm", 0, 0],
+        "naval": ["0tnorm", 0, 0],
+        "power": ["norm", 0, 0],
+        "protein": ["norm", 0, 0],
+        "wine": ["tnorm", 0, 10],
+        "yacht": ["0tnorm", 0, 0],
+    }
 
     # Ensemble sizes to be combined
     step_size = 2
@@ -785,6 +807,10 @@ def main():
                         "i_sim": i_sim,
                         "data_in_path": data_in_path,
                         "data_out_path": data_out_path,
+                        # "loss": loss,
+                        "loss": loss_dict[dataset][0],
+                        "loss_lower_limit": loss_dict[dataset][1],
+                        "loss_upper_limit": loss_dict[dataset][2],
                     }
 
                     run_grid = pd.concat(
@@ -806,7 +832,7 @@ def main():
     logging.info(log_message)
     if run_parallel:
         ### Run parallel ###
-        Parallel(n_jobs=11, backend="multiprocessing")(
+        Parallel(n_jobs=20, backend="multiprocessing")(
             delayed(fn_mc)(
                 temp_nn=row["temp_nn"],
                 dataset=row["dataset"],
@@ -821,7 +847,11 @@ def main():
                 n_lp_samples=n_lp_samples,
                 n_q_samples=n_q_samples,
                 num_cores=int(num_cores / 2),
-                loss=loss,
+                loss=[
+                    row["loss"],
+                    row["loss_lower_limit"],
+                    row["loss_upper_limit"],
+                ],
             )
             for _, row in run_grid.iterrows()
         )
@@ -842,7 +872,11 @@ def main():
                 n_lp_samples=n_lp_samples,
                 n_q_samples=n_q_samples,
                 num_cores=num_cores,
-                loss=loss,
+                loss=[
+                    row["loss"],
+                    row["loss_lower_limit"],
+                    row["loss_upper_limit"],
+                ],
             )
 
     # Take time
@@ -857,4 +891,10 @@ def main():
 
 
 if __name__ == "__main__":
+    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+    os.environ["OMP_NUM_THREADS"] = "5"
+
+    tf.config.threading.set_intra_op_parallelism_threads(3)
+    tf.config.threading.set_inter_op_parallelism_threads(3)
+
     main()

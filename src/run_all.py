@@ -1,5 +1,8 @@
 import json
 import logging
+import os
+
+import tensorflow as tf
 
 import figures
 import ss_1_ensemble
@@ -9,7 +12,19 @@ import ss_3_scores
 ### Set log Level ###
 logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+os.environ["OMP_NUM_THREADS"] = "5"
+
+tf.config.threading.set_intra_op_parallelism_threads(3)
+tf.config.threading.set_inter_op_parallelism_threads(3)
+
 if __name__ == "__main__":
+    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+    os.environ["OMP_NUM_THREADS"] = "5"
+
+    tf.config.threading.set_intra_op_parallelism_threads(3)
+    tf.config.threading.set_inter_op_parallelism_threads(3)
+
     #### More specifications ####
     multi_run = True
     methods = [

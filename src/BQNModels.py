@@ -9,11 +9,9 @@ import numpy as np
 import scipy.stats as ss
 import tensorflow as tf
 import tensorflow_probability as tfp
-from concretedropout.tensorflow import (
-    ConcreteDenseDropout,
-    get_dropout_regularizer,
-    get_weight_regularizer,
-)
+from concretedropout.tensorflow import (ConcreteDenseDropout,
+                                        get_dropout_regularizer,
+                                        get_weight_regularizer)
 from nptyping import Float, NDArray
 from tensorflow.keras import Model, Sequential  # type: ignore
 from tensorflow.keras.callbacks import EarlyStopping  # type: ignore
@@ -613,7 +611,13 @@ class BQNBayesianModel(BQNBaseModel):
             )
             return prior_model
 
-        return prior_uniform
+        available_priors = {
+            "standard_normal": prior_standard_normal,
+            "uniform": prior_uniform,
+            "laplace": prior_laplace,
+        }
+
+        return available_priors.get(self.hpar["prior"])
 
     def _get_posterior(self):
         """Returns the posterior weight distribution
@@ -883,7 +887,7 @@ class BQNBatchEnsembleModel(BQNBaseModel):
         self.hpar.update(
             {
                 "n_epochs": 500,
-                "n_batch": 60 * 1,
+                "n_batch": 60,
             }
         )
 

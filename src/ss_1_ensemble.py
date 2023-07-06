@@ -51,6 +51,13 @@ METHOD_NUM_MODELS = {
 }
 
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+os.environ["OMP_NUM_THREADS"] = "5"
+
+tf.config.threading.set_intra_op_parallelism_threads(3)
+tf.config.threading.set_inter_op_parallelism_threads(3)
+
+
 def run_ensemble_parallel_model(
     dataset: str,
     i_sim: int,
@@ -875,6 +882,12 @@ def train_valid_test_split(
 
 
 def main():
+    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+    os.environ["OMP_NUM_THREADS"] = "5"
+
+    tf.config.threading.set_intra_op_parallelism_threads(3)
+    tf.config.threading.set_inter_op_parallelism_threads(3)
+
     ### Get Config ###
     with open("src/config.json", "rb") as f:
         CONFIG = json.load(f)
@@ -897,7 +910,21 @@ def main():
     n_mean_prediction = CONFIG["PARAMS"]["N_MEAN_PREDICTION"]
 
     # Loss function "norm", "0tnorm", "tnorm"
-    loss = CONFIG["PARAMS"]["LOSS"]
+    # loss = CONFIG["PARAMS"]["LOSS"]
+    # Overwrite loss depending on dataset
+    loss_dict = {
+        "scen_1": ["norm", 0, 0],
+        "scen_4": ["norm", 0, 0],
+        "boston": ["0tnorm", 0, 0],
+        "concrete": ["0tnorm", 0, 0],
+        "energy": ["0tnorm", 0, 0],
+        "kin8nm": ["0tnorm", 0, 0],
+        "naval": ["0tnorm", 0, 0],
+        "power": ["norm", 0, 0],
+        "protein": ["norm", 0, 0],
+        "wine": ["tnorm", 0, 10],
+        "yacht": ["0tnorm", 0, 0],
+    }
 
     # Get method for generating ensemble members
     ens_method = CONFIG["ENS_METHOD"]
@@ -946,6 +973,10 @@ def main():
                 "i_sim": i_sim,
                 "data_in_path": data_in_path,
                 "data_out_path": data_out_path,
+                # "loss": loss,
+                "loss": loss_dict[dataset][0],
+                "loss_lower_limit": loss_dict[dataset][1],
+                "loss_upper_limit": loss_dict[dataset][2],
             }
             run_grid = pd.concat(
                 [run_grid, pd.DataFrame(new_row, index=[0])],
@@ -960,7 +991,7 @@ def main():
 
     if run_parallel:
         ### Run parallel ###
-        Parallel(n_jobs=4, backend="multiprocessing")(
+        Parallel(n_jobs=2, backend="multiprocessing")(
             delayed(run_ensemble)(
                 dataset=row["dataset"],
                 i_sim=row["i_sim"],
@@ -971,7 +1002,11 @@ def main():
                 num_cores=num_cores,
                 ens_method=ens_method,
                 nn_deep_arch=nn_deep_arch,
-                loss=loss,
+                loss=[
+                    row["loss"],
+                    row["loss_lower_limit"],
+                    row["loss_upper_limit"],
+                ],
                 n_mean_prediction=n_mean_prediction,
             )
             for _, row in run_grid.iterrows()
@@ -989,7 +1024,11 @@ def main():
                 num_cores=num_cores,
                 ens_method=ens_method,
                 nn_deep_arch=nn_deep_arch,
-                loss=loss,
+                loss=[
+                    row["loss"],
+                    row["loss_lower_limit"],
+                    row["loss_upper_limit"],
+                ],
                 n_mean_prediction=n_mean_prediction,
             )
 
@@ -1002,4 +1041,10 @@ def check_directories(run_grid) -> None:
 
 
 if __name__ == "__main__":
+    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+    os.environ["OMP_NUM_THREADS"] = "5"
+
+    tf.config.threading.set_intra_op_parallelism_threads(3)
+    tf.config.threading.set_inter_op_parallelism_threads(3)
+
     main()
